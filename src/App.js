@@ -1,24 +1,78 @@
-import logo from './logo.svg';
-import './App.css';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+} from "react-router-dom";
+
+import LandingPage from "./pages/LandingPage";
+import LoginPage from "./pages/LoginPage";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Dashboard from "./pages/Dashboard";
+import StockAnalysis from "./pages/StockAnalysis";
+import Strategies from "./pages/Strategies";
+import BacktestPage from "./pages/BacktestPage";
+import SettingsPage from "./pages/SettingsPage";
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={<LandingPage />}
+        />
+
+        <Route
+          path="/login"
+          element={<LoginPage />}
+        />
+
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analysis"
+          element={
+            <ProtectedRoute>
+              <StockAnalysis />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/strategies"
+          element={
+            <ProtectedRoute>
+              <Strategies />
+            </ProtectedRoute>
+          }
+        />
+
+
+        <Route
+          path="/backtest/:strategyId"
+          element={
+            <ProtectedRoute>
+              <BacktestPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

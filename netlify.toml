@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  REACT_APP_API_URL = "https://markfinancebackend.onrender.com"
+  REACT_APP_FIREBASE_API_KEY = "AIzaSyAd3JIr0OmH6Zzm-A4Uccgt_wcGZFSO6b8"
+  REACT_APP_FIREBASE_AUTH_DOMAIN = "markfinance-e9607.firebaseapp.com"
+  REACT_APP_FIREBASE_PROJECT_ID = "markfinance-e9607"
+  REACT_APP_FIREBASE_STORAGE_BUCKET = "markfinance-e9607.firebasestorage.app"
+  REACT_APP_FIREBASE_MESSAGING_SENDER_ID = "110645427126"
+  REACT_APP_FIREBASE_APP_ID = "1:110645427126:web:f43b92e839172653fe5f17"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
