@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { API_URL } from "../config/api";
+import {
+  confirmAction,
+  showError,
+  showSuccess,
+} from "../utils/toast";
 
 const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
   const [watchlists, setWatchlists] = useState([]);
@@ -107,7 +112,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || "Failed to rename watchlist");
+        showError(data.message || "Failed to rename watchlist");
         return;
       }
 
@@ -119,6 +124,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
 
       setRenameValue("");
       setShowRenameModal(false);
+      showSuccess("Watchlist renamed");
     } catch (error) {
       console.log(error);
     } finally {
@@ -129,7 +135,13 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
   const deleteWatchlist = async () => {
     if (!selectedWatchlist) return;
 
-    if (!window.confirm("Delete this watchlist?")) return;
+    const confirmed = await confirmAction({
+      title: "Delete watchlist",
+      message: `Delete "${activeWatchlist?.name || "this watchlist"}"? This cannot be undone.`,
+      confirmText: "Delete",
+    });
+
+    if (!confirmed) return;
 
     try {
       setLoading(true);
@@ -144,15 +156,16 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || "Failed to delete watchlist");
+        showError(data.message || "Failed to delete watchlist");
         return;
       }
 
       const remaining = watchlists.filter(
-        (watchlist) => watchlist._id !== selectedWatchlist,
+        watchlist => watchlist._id !== selectedWatchlist,
       );
 
       setWatchlists(remaining);
+      showSuccess("Watchlist deleted");
 
       if (remaining.length > 0) {
         localStorage.setItem("selectedWatchlist", remaining[0]._id);

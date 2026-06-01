@@ -149,7 +149,9 @@ const LandingPage = () => {
             <div className="bg-white p-6 rounded-xl shadow">
               <h3 className="font-bold text-lg">Strategy Builder</h3>
 
-              <p className="text-gray-600 mt-2">Coming Soon.</p>
+              <p className="text-gray-600 mt-2">
+                Custom scanners with RSI, EMA, volume and price rules.
+              </p>
             </div>
           </div>
         </div>

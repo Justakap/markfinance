@@ -4,22 +4,18 @@ import RsiBuyCard from "./RsiBuyCard";
 import RsiSellCard from "./RsiSellCard";
 
 const StockModal = ({ closeModal, marketData = [], rsiTimeframe = "1d" }) => {
-  const getRsiChange = (stock) => {
+  const getRsiValue = (stock) => {
     switch (rsiTimeframe) {
       case "1m":
-        return stock.rsi1mChange;
-
+        return stock.rsi1m;
       case "5m":
-        return stock.rsi5mChange;
-
+        return stock.rsi5m;
       case "15m":
-        return stock.rsi15mChange;
-
+        return stock.rsi15m;
       case "1h":
-        return stock.hourlyRsiChange;
-
+        return stock.hourlyRsi;
       default:
-        return stock.rsiChange;
+        return stock.rsi;
     }
   };
 
@@ -34,20 +30,21 @@ const StockModal = ({ closeModal, marketData = [], rsiTimeframe = "1d" }) => {
     .slice(0, 5);
 
   const rsiBuyStocks = [...marketData]
-    .filter((s) => getRsiChange(s) !== null)
-    .sort((a, b) => getRsiChange(b) - getRsiChange(a))
+    .filter((s) => getRsiValue(s) != null)
+    .sort((a, b) => getRsiValue(a) - getRsiValue(b))
     .slice(0, 5)
     .map((stock) => ({
       ...stock,
-      activeRsiChange: getRsiChange(stock),
+      activeRsi: getRsiValue(stock),
     }));
+
   const rsiSellStocks = [...marketData]
-    .filter((s) => getRsiChange(s) !== null)
-    .sort((a, b) => getRsiChange(a) - getRsiChange(b))
+    .filter((s) => getRsiValue(s) != null)
+    .sort((a, b) => getRsiValue(b) - getRsiValue(a))
     .slice(0, 5)
     .map((stock) => ({
       ...stock,
-      activeRsiChange: getRsiChange(stock),
+      activeRsi: getRsiValue(stock),
     }));
 
   return (
@@ -58,25 +55,22 @@ const StockModal = ({ closeModal, marketData = [], rsiTimeframe = "1d" }) => {
             <h2 className="text-2xl font-bold text-gray-800">
               Watchlist Analysis
             </h2>
-
             <p className="text-sm text-gray-500">Buy / Sell Recommendations</p>
           </div>
-
           <button
+            type="button"
             onClick={closeModal}
             className="w-10 h-10 rounded-lg hover:bg-red-50 text-gray-500 hover:text-red-500 transition"
           >
             ✕
           </button>
         </div>
-
         <div className="p-6">
           <div className="grid lg:grid-cols-2 gap-6">
             <BuyCard stocks={buyStocks} />
             <SellCard stocks={sellStocks} />
-            <RsiBuyCard stocks={rsiBuyStocks} rsiTimeframe={rsiTimeframe} />
-
-            <RsiSellCard stocks={rsiSellStocks} rsiTimeframe={rsiTimeframe} />
+            <RsiBuyCard stocks={rsiBuyStocks} />
+            <RsiSellCard stocks={rsiSellStocks} />
           </div>
         </div>
       </div>

@@ -1,14 +1,43 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Plus, Pencil, Trash2, Bell, BellOff, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Bell,
+  BellOff,
+  Loader2,
+  Play,
+  LineChart,
+} from "lucide-react";
 import StrategyModal from "../components/StrategyModal";
 import MainLayout from "../layout/MainLayout";
 import StrategyResultsModal from "../components/StrategyResultsModal";
 import { useNavigate } from "react-router-dom";
 import { API_URL } from "../config/api";
+import {
+  confirmAction,
+  showError,
+  showInfo,
+  showSuccess,
+} from "../utils/toast";
+
+const ConditionPill = ({ condition, connector }) => (
+  <>
+    <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-medium">
+      {condition.indicator} {condition.operator} {condition.value}
+    </span>
+    {connector && (
+      <span className="text-[10px] font-bold text-slate-400 uppercase">
+        {connector}
+      </span>
+    )}
+  </>
+);
 
 export default function Strategies() {
   const navigate = useNavigate();
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
 
   const [strategies, setStrategies] = useState([]);
   const [scanningStrategy, setScanningStrategy] = useState(null);
@@ -17,12 +46,10 @@ export default function Strategies() {
   const [editingStrategy, setEditingStrategy] = useState(null);
   const [watchlists, setWatchlists] = useState([]);
   const [selectedWatchlists, setSelectedWatchlists] = useState({});
-
   const [showResults, setShowResults] = useState(false);
   const [matchedStocks, setMatchedStocks] = useState([]);
   const [strategyName, setStrategyName] = useState("");
-
-  const user = JSON.parse(localStorage.getItem("user"));
+  const [lastScanMs, setLastScanMs] = useState(null);
 
   const getEntryConditions = (strategy) =>
     strategy.entryConditions?.length
@@ -32,24 +59,42 @@ export default function Strategies() {
   const getConditionConnector = (condition, strategy) =>
     condition.nextLogic || strategy.logic || "AND";
 
+  const applyDefaultWatchlists = (list, wls) => {
+    if (!wls.length || !list.length) return;
+
+    const saved =
+      localStorage.getItem("selectedWatchlist") || wls[0]?._id || "";
+
+    setSelectedWatchlists((prev) => {
+      const next = { ...prev };
+
+      list.forEach((strategy) => {
+        if (!next[strategy._id]) {
+          next[strategy._id] = saved;
+        }
+      });
+
+      return next;
+    });
+  };
+
   const fetchWatchlists = async () => {
     try {
       const res = await axios.get(
         `${API_URL}/api/watchlists?userId=${user.mongoId}`,
       );
-
-      console.log("WATCHLISTS:", res.data);
-
       setWatchlists(res.data);
+      applyDefaultWatchlists(strategies, res.data);
     } catch (error) {
       console.log(error);
     }
   };
+
   const fetchStrategies = async () => {
     try {
       const res = await axios.get(`${API_URL}/api/strategies/${user.mongoId}`);
-
       setStrategies(res.data);
+      applyDefaultWatchlists(res.data, watchlists);
     } catch (err) {
       console.error(err);
     } finally {
@@ -62,44 +107,47 @@ export default function Strategies() {
     fetchWatchlists();
   }, []);
 
+  useEffect(() => {
+    applyDefaultWatchlists(strategies, watchlists);
+  }, [strategies, watchlists]);
+
   const createStrategy = async (data) => {
     await axios.post(`${API_URL}/api/strategies`, {
       ...data,
       userId: user.mongoId,
     });
-
     fetchStrategies();
   };
 
   const updateStrategy = async (data) => {
     await axios.put(`${API_URL}/api/strategies/${editingStrategy._id}`, data);
-
     fetchStrategies();
     setEditingStrategy(null);
   };
 
   const deleteStrategy = async (id) => {
-    if (!window.confirm("Delete strategy?")) return;
+    const confirmed = await confirmAction({
+      title: "Delete strategy",
+      message: "Delete this strategy? This cannot be undone.",
+      confirmText: "Delete",
+    });
+
+    if (!confirmed) return;
 
     await axios.delete(`${API_URL}/api/strategies/${id}`);
-
     fetchStrategies();
+    showSuccess("Strategy deleted");
   };
-  const runScan = async (strategyId, strategyName) => {
-    console.log("RUN CLICKED");
-    console.log(strategyId);
-    console.log(strategyName);
+
+  const runScan = async (strategyId, name) => {
+    const watchlistId = selectedWatchlists[strategyId];
+
+    if (!watchlistId) {
+      showInfo("Please select a watchlist");
+      return;
+    }
 
     try {
-      const watchlistId = selectedWatchlists[strategyId];
-
-      console.log("WATCHLIST:", watchlistId);
-
-      if (!watchlistId) {
-        alert("Please select a watchlist");
-        return;
-      }
-
       setScanningStrategy(strategyId);
 
       const res = await axios.post(`${API_URL}/api/strategies/run`, {
@@ -107,14 +155,15 @@ export default function Strategies() {
         watchlistId,
       });
 
-      console.log("SCAN RESULT", res.data);
-
-      setMatchedStocks(res.data.matches);
-      setStrategyName(strategyName);
+      setMatchedStocks(res.data.matches || []);
+      setStrategyName(name);
+      setLastScanMs(res.data.scanTimeMs ?? null);
       setShowResults(true);
     } catch (error) {
-      console.log("SCAN ERROR");
-      console.log(error);
+      showError(
+        error?.response?.data?.message ||
+          "Strategy scan failed. Check backend is running and you are logged in.",
+      );
     } finally {
       setScanningStrategy(null);
     }
@@ -122,113 +171,119 @@ export default function Strategies() {
 
   return (
     <MainLayout
-      title="Strategy Builder"
-      subtitle="Create custom scanners and alerts"
+      title="Strategies"
+      subtitle="Build, scan and backtest your rules"
       actions={
         <button
+          type="button"
           onClick={() => {
             setEditingStrategy(null);
             setShowModal(true);
           }}
-          className="
-            bg-[#2563EB]
-            hover:bg-blue-700
-            text-white
-            px-5
-            py-3
-            rounded-xl
-            flex
-            items-center
-            gap-2
-            shadow-sm
-          "
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm"
         >
-          <Plus size={18} />
+          <Plus size={16} />
           New Strategy
         </button>
       }
     >
-      <div className="p-8 bg-[#FAFBFC] min-h-screen">
+      <div className="p-6 md:p-8 bg-slate-50 min-h-screen">
         {loading ? (
-          <div>Loading...</div>
+          <p className="text-slate-500 text-sm">Loading strategies…</p>
+        ) : strategies.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center">
+            <h3 className="text-lg font-semibold text-slate-900">
+              No strategies yet
+            </h3>
+            <p className="text-slate-500 mt-2 text-sm">
+              Create your first scanner with RSI, EMA, volume or price rules.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowModal(true)}
+              className="mt-6 inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm"
+            >
+              <Plus size={16} />
+              Create Strategy
+            </button>
+          </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="space-y-4">
             {strategies.map((strategy) => (
-              <div
+              <article
                 key={strategy._id}
-                className="
-    bg-white
-    border
-    border-gray-200
-    rounded-2xl
-    p-6
-    shadow-sm
-    hover:shadow-md
-    transition
-  "
+                className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm"
               >
-                <div className="flex items-center justify-between gap-8">
-                  {/* LEFT */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <h2 className="font-bold text-xl text-slate-900">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-semibold text-lg text-slate-900">
                         {strategy.name}
                       </h2>
-
-                      <span
-                        className="
-        px-3
-        py-1
-        rounded-full
-        bg-green-100
-        text-green-700
-        text-xs
-        font-medium
-      "
-                      >
-                        ACTIVE
-                      </span>
-
+                      {strategy.alertEnabled ? (
+                        <Bell size={14} className="text-green-600" />
+                      ) : (
+                        <BellOff size={14} className="text-slate-300" />
+                      )}
                     </div>
 
-                    <p className="text-slate-500 mb-4">
-                      {strategy.description}
-                    </p>
+                    {strategy.description && (
+                      <p className="text-sm text-slate-500 mt-1">
+                        {strategy.description}
+                      </p>
+                    )}
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      {getEntryConditions(strategy).map((condition, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
-                          <div
-                            className="
-            px-3
-            py-1
-            bg-slate-100
-            rounded-lg
-            text-sm
-          "
-                          >
-                            {condition.indicator} {condition.operator}{" "}
-                            {condition.value}
-                          </div>
+                    <div className="mt-3">
+                      <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
+                        Entry
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {getEntryConditions(strategy).map((condition, idx) => (
+                          <ConditionPill
+                            key={idx}
+                            condition={condition}
+                            connector={
+                              idx !== getEntryConditions(strategy).length - 1
+                                ? getConditionConnector(condition, strategy)
+                                : null
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
 
-                          {idx !== getEntryConditions(strategy).length - 1 && (
-                            <span className="text-xs font-bold text-slate-500">
-                              {getConditionConnector(condition, strategy)}
-                            </span>
-                          )}
+                    {strategy.exitConditions?.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
+                          Exit
+                        </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {strategy.exitConditions.map((condition, idx) => (
+                            <ConditionPill
+                              key={idx}
+                              condition={condition}
+                              connector={
+                                idx !== strategy.exitConditions.length - 1
+                                  ? getConditionConnector(condition, strategy)
+                                  : null
+                              }
+                            />
+                          ))}
                         </div>
-                      ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 mt-3 text-xs text-slate-500">
+                      {strategy.stopLoss > 0 && (
+                        <span>SL {strategy.stopLoss}%</span>
+                      )}
+                      {strategy.target > 0 && (
+                        <span>Target {strategy.target}%</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* RIGHT */}
-                  <div className="flex items-center gap-3">
-                    {strategy.alertEnabled ? (
-                      <Bell size={18} className="text-green-600" />
-                    ) : (
-                      <BellOff size={18} className="text-gray-400" />
-                    )}
-
+                  <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:min-w-[220px]">
                     <select
                       value={selectedWatchlists[strategy._id] || ""}
                       onChange={(e) =>
@@ -237,131 +292,74 @@ export default function Strategies() {
                           [strategy._id]: e.target.value,
                         })
                       }
-                      className="
-        w-52
-        border
-        border-gray-300
-        rounded-xl
-        px-3
-        py-2
-        bg-white
-      "
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
                     >
-                      <option value="">Select Watchlist</option>
-
-                      {watchlists.map((watchlist) => (
-                        <option key={watchlist._id} value={watchlist._id}>
-                          {watchlist.name}
+                      {watchlists.map((wl) => (
+                        <option key={wl._id} value={wl._id}>
+                          {wl.name}
                         </option>
                       ))}
                     </select>
 
-                    <button
-                      disabled={scanningStrategy === strategy._id}
-                      onClick={() => runScan(strategy._id, strategy.name)}
-                      className={`
-        min-w-[120px]
-        px-4
-        py-2
-        rounded-xl
-        text-white
-        font-medium
-        transition
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={scanningStrategy === strategy._id}
+                        onClick={() => runScan(strategy._id, strategy.name)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                      >
+                        {scanningStrategy === strategy._id ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Play size={14} />
+                        )}
+                        Scan
+                      </button>
 
-     ${
-       scanningStrategy === strategy._id
-         ? "bg-gray-400 cursor-not-allowed"
-         : "bg-green-600 hover:bg-green-700"
-     }
-      `}
-                    >
-                      {scanningStrategy === strategy._id ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </>
-                      ) : (
-                        "Run Scan"
-                      )}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/backtest/${strategy._id}`)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                      >
+                        <LineChart size={14} />
+                        Backtest
+                      </button>
 
-                    <button
-                      onClick={() => navigate(`/backtest/${strategy._id}`)}
-                      className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-                    >
-                      Run Backtest
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStrategy(strategy);
+                          setShowModal(true);
+                        }}
+                        className="p-2 rounded-lg hover:bg-blue-50 text-blue-600"
+                      >
+                        <Pencil size={16} />
+                      </button>
 
-                    <button
-                      onClick={() => {
-                        setEditingStrategy(strategy);
-                        setShowModal(true);
-                      }}
-                      className="
-        p-2
-        hover:bg-blue-50
-        rounded-lg
-      "
-                    >
-                      <Pencil size={18} className="text-blue-600" />
-                    </button>
-
-                    <button
-                      onClick={() => deleteStrategy(strategy._id)}
-                      className="
-        p-2
-        hover:bg-red-50
-        rounded-lg
-      "
-                    >
-                      <Trash2 size={18} className="text-red-500" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteStrategy(strategy._id)}
+                        className="p-2 rounded-lg hover:bg-red-50 text-red-500"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
+
         {scanningStrategy && (
-          <div
-            className="
-    fixed inset-0
-    bg-black/40
-    z-[999]
-    flex items-center justify-center
-  "
-          >
-            <div
-              className="
-      bg-white
-      rounded-2xl
-      shadow-xl
-      p-10
-      flex flex-col
-      items-center
-      gap-4
-      min-w-[350px]
-    "
-            >
-              <div
-                className="
-          w-12 h-12
-          border-4
-          border-blue-600
-          border-t-transparent
-          rounded-full
-          animate-spin
-        "
-              />
-
-              <h3 className="font-semibold text-lg">Running Strategy Scan</h3>
-
-              <p className="text-gray-500 text-center">
-                Fetching market data, calculating indicators and evaluating
-                stocks...
-              </p>
+          <div className="fixed inset-0 bg-black/40 z-[999] flex items-center justify-center">
+            <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center gap-3 min-w-[300px]">
+              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <p className="font-medium">Running scan…</p>
             </div>
           </div>
         )}
+
         <StrategyModal
           isOpen={showModal}
           onClose={() => {
@@ -374,11 +372,13 @@ export default function Strategies() {
           editingStrategy={editingStrategy}
         />
       </div>
+
       <StrategyResultsModal
         isOpen={showResults}
         onClose={() => setShowResults(false)}
         strategyName={strategyName}
         stocks={matchedStocks}
+        scanTimeMs={lastScanMs}
       />
     </MainLayout>
   );

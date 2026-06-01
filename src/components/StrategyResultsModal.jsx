@@ -5,6 +5,7 @@ export default function StrategyResultsModal({
   onClose,
   strategyName,
   stocks = [],
+  scanTimeMs,
 }) {
   if (!isOpen) return null;
 
@@ -15,7 +16,14 @@ export default function StrategyResultsModal({
           <div>
             <h2 className="text-xl font-bold">{strategyName}</h2>
 
-            <p className="text-gray-500">Matches Found: {stocks.length}</p>
+            <p className="text-gray-500">
+              Matches Found: {stocks.length}
+              {scanTimeMs != null && (
+                <span className="text-emerald-600 ml-2">
+                  · Scan {scanTimeMs} ms (cache)
+                </span>
+              )}
+            </p>
           </div>
 
           <button

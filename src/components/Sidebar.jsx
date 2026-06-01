@@ -25,7 +25,28 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       path: "/strategies",
       icon: LayoutDashboard,
     },
+    {
+      title: "Backtests",
+      path: "/backtests",
+      icon: LineChart,
+    },
   ];
+
+  if (
+    process.env.REACT_APP_VALIDATION_MODE === "true" ||
+    process.env.NODE_ENV === "development"
+  ) {
+    menuItems.push({
+      title: "Validation",
+      path: "/validation",
+      icon: Settings,
+    });
+    menuItems.push({
+      title: "Metrics",
+      path: "/metrics",
+      icon: LayoutDashboard,
+    });
+  }
 
   return (
     <div
