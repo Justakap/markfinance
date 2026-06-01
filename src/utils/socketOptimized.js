@@ -16,10 +16,12 @@ export function getMarketSocket() {
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       reconnectionAttempts: 5,
+      // Reduce connection overhead
       upgradeDuration: 10000,
       path: "/socket.io/",
     });
 
+    // Handle connection events
     socket.on("connect", () => {
       console.log("Market socket connected");
     });
@@ -45,9 +47,13 @@ export function disconnectMarketSocket() {
   }
 }
 
-// Internal batching functions
+/**
+ * Batch market updates to reduce re-renders
+ * Updates are sent in 2-second intervals instead of immediately
+ */
 function scheduleBatchFlush() {
-  if (updateTimer) return;
+  if (updateTimer) return; // Already scheduled
+
   updateTimer = setTimeout(() => {
     flushUpdateBatch();
   }, UPDATE_BATCH_INTERVAL);
@@ -63,6 +69,8 @@ function flushUpdateBatch() {
   updateBatch = [];
   updateTimer = null;
 
+  // Emit batched updates to listeners
+  // (Listeners should handle multiple updates at once)
   const marketSocket = socket;
   if (marketSocket) {
     marketSocket.emit("batchedStockUpdates", batch);
@@ -77,7 +85,10 @@ function clearUpdateBatch() {
   updateBatch = [];
 }
 
-// Public API for batched updates
+/**
+ * Register a batched stock update listener
+ * Updates are batched and sent every 2 seconds
+ */
 export function onBatchedStockUpdates(callback) {
   const marketSocket = getMarketSocket();
 
@@ -94,10 +105,43 @@ export function onBatchedStockUpdates(callback) {
   };
 }
 
-// Legacy API - for backward compatibility
+/**
+ * Register a market status listener (market open/close, trading hours)
+ */
+export function onMarketStatus(callback) {
+  const marketSocket = getMarketSocket();
+  marketSocket.on("marketStatus", callback);
+
+  return () => {
+    marketSocket.off("marketStatus", callback);
+  };
+}
+
+/**
+ * For internal use: batch individual stock updates
+ */
+export function batchStockUpdate(update) {
+  updateBatch.push(update);
+
+  if (updateBatch.length >= MAX_BATCH_SIZE) {
+    // Flush immediately if batch is full
+    if (updateTimer) {
+      clearTimeout(updateTimer);
+      updateTimer = null;
+    }
+    flushUpdateBatch();
+  } else {
+    scheduleBatchFlush();
+  }
+}
+
+/**
+ * Old API for backward compatibility - use batched updates instead
+ */
 export function onStockUpdate(callback) {
   const marketSocket = getMarketSocket();
 
+  // Wrap individual updates to batch them
   const batchedCallback = (updates) => {
     if (Array.isArray(updates)) {
       updates.forEach(callback);
