@@ -5,11 +5,7 @@ import StockSearchDropdown from "./StockSearchDropdown";
 import StockTableRow from "./StockTableRow";
 import { findQuoteForSymbol } from "../utils/symbols";
 import { apiFetch } from "../utils/api";
-import {
-  confirmAction,
-  showError,
-  showSuccess,
-} from "../utils/toast";
+import { confirmAction, showError, showSuccess } from "../utils/toast";
 
 const RSI_TIMEFRAMES = [
   { value: "1m", label: "1 Min" },
@@ -93,7 +89,7 @@ const StockTable = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const allStocks = watchlist?.stocks || [];
+  const allStocks = useMemo(() => watchlist?.stocks || [], [watchlist?.stocks]);
   const categories = [
     ...new Set(allStocks.map((stock) => stock.sector).filter(Boolean)),
   ];
@@ -276,11 +272,14 @@ const StockTable = ({
     clearSelection();
 
     try {
-      await apiFetch(`/api/watchlists/${selectedWatchlist}/stocks/bulk-remove`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbols }),
-      });
+      await apiFetch(
+        `/api/watchlists/${selectedWatchlist}/stocks/bulk-remove`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbols }),
+        },
+      );
 
       showSuccess(
         `Removed ${count} stock${count > 1 ? "s" : ""} from watchlist`,
@@ -441,7 +440,11 @@ const StockTable = ({
           <div
             ref={scrollRef}
             className="overflow-x-auto"
-            style={useVirtual ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" } : undefined}
+            style={
+              useVirtual
+                ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }
+                : undefined
+            }
             onScroll={useVirtual ? handleScroll : undefined}
           >
             <table className="w-full">
@@ -510,7 +513,10 @@ const StockTable = ({
                   })
                 ) : (
                   <tr>
-                    <td colSpan={colSpan} className="text-center p-8 text-gray-500">
+                    <td
+                      colSpan={colSpan}
+                      className="text-center p-8 text-gray-500"
+                    >
                       No stocks in this watchlist
                     </td>
                   </tr>
