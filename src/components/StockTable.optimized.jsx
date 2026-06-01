@@ -3,7 +3,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import StockModal from "./StockModal";
 import StockSearchDropdown from "./StockSearchDropdown";
 import StockTableRow from "./StockTableRow";
-import { findQuoteForSymbol } from "../utils/symbols";
+import { normalizeSymbol } from "../utils/symbols";
 import { apiFetch } from "../utils/api";
 import { confirmAction, showError, showSuccess } from "../utils/toast";
 
@@ -16,7 +16,7 @@ const RSI_TIMEFRAMES = [
 ];
 
 const ROW_HEIGHT = 56;
-const VIRTUAL_THRESHOLD = 20;
+const VIRTUAL_THRESHOLD = 20; // Lower threshold for virtual scrolling
 const VIEWPORT_HEIGHT = 520;
 
 const getRsiData = (quote, rsiTimeframe) => {
@@ -105,22 +105,28 @@ const StockTable = ({
     );
   };
 
-  // CRITICAL OPTIMIZATION: Create Map for O(1) quote lookups
-  // This fixes the O(n²) complexity in sorting (was: findQuoteForSymbol in each comparison)
+  /**
+   * CRITICAL FIX: Create a Map for O(1) quote lookups instead of O(n) searches
+   * This was causing O(n²) complexity in the sort function
+   */
   const quoteMap = useMemo(() => {
     const map = new Map();
     marketData.forEach((quote) => {
+      // Store by normalized symbol for consistent lookups
       map.set(normalizeSymbol(quote.symbol), quote);
+      // Also store by exact symbol for fallback
       map.set(quote.symbol, quote);
     });
     return map;
   }, [marketData]);
 
   const getQuote = useCallback(
-    (symbol) => quoteMap.get(normalizeSymbol(symbol)) || quoteMap.get(symbol) || null,
+    (symbol) =>
+      quoteMap.get(normalizeSymbol(symbol)) || quoteMap.get(symbol) || null,
     [quoteMap],
   );
 
+  // Memoize sorted and filtered stocks
   const stocks = useMemo(() => {
     let list =
       selectedCategories.length === 0
@@ -130,7 +136,7 @@ const StockTable = ({
           );
 
     list.sort((a, b) => {
-      // Now using Map lookups - O(1) instead of O(n) per comparison!
+      // Now using Map lookups - O(1) instead of O(n)
       const quoteA = getQuote(a.symbol);
       const quoteB = getQuote(b.symbol);
       const rsiA = getRsiData(quoteA, rsiTimeframe);
@@ -198,7 +204,7 @@ const StockTable = ({
   }, [
     allStocks,
     selectedCategories,
-    marketData,
+    getQuote,
     sortField,
     sortDirection,
     rsiTimeframe,

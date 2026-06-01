@@ -11,7 +11,10 @@ import Dashboard from "./pages/Dashboard";
 import StockAnalysis from "./pages/StockAnalysis";
 import Strategies from "./pages/Strategies";
 import BacktestPage from "./pages/BacktestPage";
+import BacktestsPage from "./pages/BacktestsPage";
 import SettingsPage from "./pages/SettingsPage";
+import ValidationPage from "./pages/ValidationPage";
+import MetricsPage from "./pages/MetricsPage";
 
 function App() {
   return (
@@ -64,6 +67,15 @@ function App() {
         />
 
         <Route
+          path="/backtests"
+          element={
+            <ProtectedRoute>
+              <BacktestsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/settings"
           element={
             <ProtectedRoute>
@@ -71,6 +83,28 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {(process.env.REACT_APP_VALIDATION_MODE === "true" ||
+          process.env.NODE_ENV === "development") && (
+          <>
+            <Route
+              path="/validation"
+              element={
+                <ProtectedRoute>
+                  <ValidationPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/metrics"
+              element={
+                <ProtectedRoute>
+                  <MetricsPage />
+                </ProtectedRoute>
+              }
+            />
+          </>
+        )}
       </Routes>
     </BrowserRouter>
   );

@@ -1,29 +1,56 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "../layout/MainLayout";
 import { API_URL } from "../config/api";
+import { dashboardCache } from "../utils/requestCache";
+import { requestDebouncer } from "../utils/requestOptimizer";
 
 const Dashboard = () => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const loadingRef = useRef(false);
+
+  const loadDashboard = useCallback(async () => {
+    // Prevent duplicate requests
+    if (loadingRef.current) return;
+
+    // Check cache first
+    const cached = dashboardCache.get("dashboard");
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      return;
+    }
+
+    loadingRef.current = true;
+    try {
+      const res = await fetch(`${API_URL}/api/dashboard`);
+      if (res.ok) {
+        const result = await res.json();
+        // Cache the result
+        dashboardCache.set("dashboard", result);
+        setData(result);
+      }
+    } catch (error) {
+      console.log(error);
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/dashboard`);
-        if (res.ok) {
-          setData(await res.json());
-        }
-      } catch (error) {
-        console.log(error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    loadDashboard();
 
-    load();
-  }, []);
+    // Optional: Refresh dashboard every 60 seconds
+    const interval = setInterval(() => {
+      dashboardCache.delete("dashboard");
+      loadDashboard();
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [loadDashboard]);
 
   const cards = [
     { label: "Watchlists", value: data?.watchlists ?? 0 },

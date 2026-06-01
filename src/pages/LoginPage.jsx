@@ -3,6 +3,8 @@ import { auth, googleProvider } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_URL } from "../config/api";
+import { setupAxiosAuth } from "../utils/api";
+import { showError } from "../utils/toast";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -31,26 +33,26 @@ const LoginPage = () => {
       console.log("Mongo User:", data);
 
       if (!response.ok) {
-        alert(data.message || "Google Login Failed");
+        showError(data.message || "Google Login Failed");
         return;
       }
 
       if (!data.user) {
-        alert("Failed to create user in database");
+        showError("Failed to create user in database");
         return;
       }
 
       // store token if returned
       if (data.token) {
         localStorage.setItem("token", data.token);
-        axios.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+        setupAxiosAuth();
       }
 
       localStorage.setItem(
         "user",
         JSON.stringify({
           uid: user.uid,
-          mongoId: data.user._id,
+          mongoId: String(data.user._id),
           name: user.displayName,
           email: user.email,
           photoURL: user.photoURL,
@@ -65,7 +67,7 @@ const LoginPage = () => {
         customData: error?.customData,
       });
 
-      alert(
+      showError(
         error?.code
           ? `${error.code}: ${error.message}`
           : error?.message || "Google Login Failed",

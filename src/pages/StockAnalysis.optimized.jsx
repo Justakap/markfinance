@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import MainLayout from "../layout/MainLayout";
 import WatchlistSelector from "../components/WatchlistSelector";
 import SummaryCards from "../components/SummaryCards";
 import StockTable from "../components/StockTable";
 import { apiFetch } from "../utils/api";
-import { onBatchedStockUpdates } from "../utils/socket";
+import { onBatchedStockUpdates } from "../utils/socketOptimized";
 import { normalizeSymbol } from "../utils/symbols";
 import { marketDataCache } from "../utils/requestCache";
+import { marketDataDebouncer } from "../utils/requestOptimizer";
 
 /**
- * Optimized batch merge for multiple stock updates
+ * Optimized merge for batch updates instead of individual updates
  * Much more efficient than merging one-by-one
  */
 const mergeBatchedQuotes = (rows, deltas) => {
@@ -92,7 +92,7 @@ const StockAnalysis = () => {
       return;
     }
 
-    // Check cache first to prevent duplicate requests
+    // Check cache first
     const cacheKey = `market-data-${selectedWatchlist}`;
     const cached = marketDataCache.get(cacheKey);
     if (cached) {
@@ -121,8 +121,8 @@ const StockAnalysis = () => {
         setMarketStatus(res.marketStatus || null);
       }
 
-      // Cache the result for 45 seconds
-      marketDataCache.set(cacheKey, data, 45000);
+      // Cache the result
+      marketDataCache.set(cacheKey, data, 45000); // Cache for 45 seconds
       setLastUpdated(res.updatedAt ? new Date(res.updatedAt) : new Date());
     } catch (error) {
       console.log(error);
@@ -183,6 +183,7 @@ const StockAnalysis = () => {
     await fetchMarketData();
   }, [selectedWatchlist, fetchWatchlist, fetchMarketData]);
 
+  // Initial load
   useEffect(() => {
     fetchWatchlist();
   }, [fetchWatchlist]);

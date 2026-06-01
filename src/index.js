@@ -1,16 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import 'react-toastify/dist/ReactToastify.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import axios from 'axios';
+import { ToastContainer } from 'react-toastify';
 import { API_URL } from './config/api';
+import { setupAxiosAuth } from './utils/api';
 
-// If a token is present from a previous login, set it for axios and fetch
-const savedToken = localStorage.getItem('token');
-if (savedToken) {
-  axios.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`;
-}
+setupAxiosAuth();
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, init = {}) => {
@@ -42,6 +40,15 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <App />
+    <ToastContainer
+      position="top-right"
+      autoClose={3500}
+      hideProgressBar={false}
+      newestOnTop
+      closeOnClick
+      pauseOnHover
+      theme="light"
+    />
   </React.StrictMode>
 );
 

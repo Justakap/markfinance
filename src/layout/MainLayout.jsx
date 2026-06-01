@@ -27,21 +27,27 @@ const MainLayout = ({
       return "Waiting...";
     }
 
+    const formatted = new Date(lastUpdated).toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
     const seconds = Math.floor(
       (Date.now() - new Date(lastUpdated).getTime()) / 1000,
     );
 
     if (seconds <= 10) {
-      return "Just now";
+      return `${formatted} · Just now`;
     }
 
     if (seconds < 60) {
-      return `${seconds} seconds ago`;
+      return `${formatted} · ${seconds}s ago`;
     }
 
     const minutes = Math.floor(seconds / 60);
 
-    return `${minutes} minutes ago`;
+    return `${formatted} · ${minutes}m ago`;
   };
 
   return (
@@ -56,7 +62,7 @@ const MainLayout = ({
         `}
       >
         {title && (
-          <header className="bg-white border-b border-gray-200 shadow-sm">
+          <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
             <div className="px-7 py-3 flex items-center justify-between gap-6">
               <div>
                 <h1 className="text-xl font-bold text-blue-700">{title}</h1>
