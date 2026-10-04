@@ -317,5 +317,25 @@ service going forward. If you ever see `markfinancebackend.onrender.com`
 referenced anywhere (old notes, bookmarks), treat the `1` URL as
 authoritative unless told otherwise.
 
+### 2026-10-05 (later) — Fixed null-coerced-to-zero display bugs
+
+`Number(null) === 0` but `Number(undefined) === NaN` — several places did
+`Number.isFinite(Number(quote?.x ?? quote?.y))` to decide "do we have real
+data," which silently treated genuinely-missing quote data as a real zero.
+Confirmed live on production: the Greek page showed "0.00" for an
+untraded option's Rate instead of "--". Same pattern affected
+`StockTable`/`StockTableRow`'s 20-DMA Above/Below status and the RSI/price
+"velocity" trend indicators (could show a wrong status instead of "--"
+when price/EMA data was genuinely absent), plus both tables' export rows.
+
+Added `toFiniteNumber()` (`src/utils/indicators.js` — returns `NaN` for
+null/undefined instead of coercing to `0`) and used it everywhere this
+isFinite-as-presence-check pattern appeared, in `StockTable.jsx`,
+`StockTableRow.jsx`, `GreekTable.jsx`, `GreekTableRow.jsx`. If you add a
+new quote-derived numeric field anywhere, use `toFiniteNumber()` for the
+presence check rather than a bare `Number(...)` — don't reintroduce this.
+Sort-value fallbacks (`?? 0` for tie-breaking) are a different, intentional
+pattern and were left alone.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
