@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import MainLayout from "../layout/MainLayout";
 import { auth } from "../firebase";
+import { clearSession } from "../utils/auth";
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -14,9 +15,7 @@ const SettingsPage = () => {
 
   const handleLogout = async () => {
     await signOut(auth);
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    localStorage.removeItem("selectedWatchlist");
+    clearSession();
     delete axios.defaults.headers.common.Authorization;
     navigate("/login");
   };

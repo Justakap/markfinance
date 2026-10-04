@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
-import { API_URL } from "../config/api";
+import { apiFetch } from "../utils/api";
 import {
   confirmAction,
   showError,
@@ -16,18 +16,14 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
   const [loading, setLoading] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user"));
+  const userId = user?.uid;
+  const mongoId = user?.mongoId;
 
-  const fetchWatchlists = async () => {
+  const fetchWatchlists = useCallback(async () => {
     try {
-      if (!user?.uid) return;
+      if (!userId) return;
 
-      const res = await fetch(
-        `${API_URL}/api/watchlists?userId=${user.mongoId}`,
-      );
-
-      const data = await res.json();
-
-      console.log("WATCHLIST RESPONSE:", data);
+      const data = await apiFetch(`/api/watchlists?userId=${mongoId}`);
 
       setWatchlists(Array.isArray(data) ? data : []);
 
@@ -46,11 +42,11 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
     } catch (error) {
       console.log(error);
     }
-  };
+  }, [mongoId, setSelectedWatchlist, userId]);
 
   useEffect(() => {
     fetchWatchlists();
-  }, []);
+  }, [fetchWatchlists]);
 
   const activeWatchlist = watchlists.find(
     (watchlist) => watchlist._id === selectedWatchlist,
@@ -62,18 +58,16 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
     try {
       setLoading(true);
 
-      const res = await fetch(`${API_URL}/api/watchlists`, {
+      const data = await apiFetch("/api/watchlists", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: newWatchlist,
-          userId: user.mongoId,
+          userId: mongoId,
         }),
       });
-
-      const data = await res.json();
 
       setWatchlists((prev) => [data, ...prev]);
 
@@ -84,7 +78,8 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
       setNewWatchlist("");
       setShowModal(false);
     } catch (error) {
-      console.log(error);
+      console.error(error);
+      showError(error.message || "Failed to create watchlist");
     } finally {
       setLoading(false);
     }
@@ -96,25 +91,15 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
     try {
       setLoading(true);
 
-      const res = await fetch(
-        `${API_URL}/api/watchlists/${selectedWatchlist}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: renameValue,
-          }),
+      const data = await apiFetch(`/api/watchlists/${selectedWatchlist}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        showError(data.message || "Failed to rename watchlist");
-        return;
-      }
+        body: JSON.stringify({
+          name: renameValue,
+        }),
+      });
 
       setWatchlists((prev) =>
         prev.map((watchlist) =>
@@ -126,7 +111,8 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
       setShowRenameModal(false);
       showSuccess("Watchlist renamed");
     } catch (error) {
-      console.log(error);
+      console.error(error);
+      showError(error.message || "Failed to rename watchlist");
     } finally {
       setLoading(false);
     }
@@ -146,19 +132,9 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
     try {
       setLoading(true);
 
-      const res = await fetch(
-        `${API_URL}/api/watchlists/${selectedWatchlist}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        showError(data.message || "Failed to delete watchlist");
-        return;
-      }
+      await apiFetch(`/api/watchlists/${selectedWatchlist}`, {
+        method: "DELETE",
+      });
 
       const remaining = watchlists.filter(
         watchlist => watchlist._id !== selectedWatchlist,
@@ -175,7 +151,8 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
         setSelectedWatchlist("");
       }
     } catch (error) {
-      console.log(error);
+      console.error(error);
+      showError(error.message || "Failed to delete watchlist");
     } finally {
       setLoading(false);
     }

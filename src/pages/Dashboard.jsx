@@ -1,28 +1,35 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import MainLayout from "../layout/MainLayout";
-import { API_URL } from "../config/api";
+import { apiFetch } from "../utils/api";
 
 const Dashboard = () => {
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const load = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/dashboard`);
-        if (res.ok) {
-          setData(await res.json());
-        }
-      } catch (error) {
-        console.log(error);
+        const result = await apiFetch("/api/dashboard", { signal: controller.signal });
+        setData(result);
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        console.error(err);
+        setError(err.message || "Failed to load dashboard");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     load();
+
+    return () => controller.abort();
   }, []);
 
   const cards = [
@@ -43,6 +50,12 @@ const Dashboard = () => {
       subtitle={`Welcome back, ${user?.name?.split(" ")[0] || "there"}`}
     >
       <div className="bg-slate-50 min-h-screen p-6">
+        {error && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {cards.map((card) => (
             <div
