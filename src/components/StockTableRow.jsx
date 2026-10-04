@@ -4,7 +4,7 @@ import {
   formatChangePercent,
   formatPriceFromQuote,
 } from "../utils/currency";
-import { normalizeIndicatorQuote } from "../utils/indicators";
+import { normalizeIndicatorQuote, toFiniteNumber } from "../utils/indicators";
 
 const displaySymbol = (symbol) =>
   symbol.replace(".NS", "").replace(".BO", "");
@@ -47,7 +47,8 @@ const getVelocityDetails = (quote) => {
 
   const allValid = rows.every(
     (row) =>
-      Number.isFinite(Number(row.current)) && Number.isFinite(Number(row.prev)),
+      Number.isFinite(toFiniteNumber(row.current)) &&
+      Number.isFinite(toFiniteNumber(row.prev)),
   );
 
   if (!allValid) {
@@ -70,7 +71,7 @@ const getVelocityDetails = (quote) => {
 
 const getPriceVelocityDetails = (quote) => {
   const normalized = normalizeIndicatorQuote(quote);
-  const current = Number(normalized?.price ?? normalized?.ltp);
+  const current = toFiniteNumber(normalized?.price ?? normalized?.ltp);
   const rows = [
     { label: "5m", current, prev: normalized?.prevPrice5m },
     { label: "15m", current, prev: normalized?.prevPrice15m },
@@ -80,7 +81,8 @@ const getPriceVelocityDetails = (quote) => {
 
   const allValid = rows.every(
     (row) =>
-      Number.isFinite(Number(row.current)) && Number.isFinite(Number(row.prev)),
+      Number.isFinite(toFiniteNumber(row.current)) &&
+      Number.isFinite(toFiniteNumber(row.prev)),
   );
 
   if (!allValid) {
@@ -144,10 +146,10 @@ const StockTableRow = memo(function StockTableRow({
 
   const rowHighlight = isSelected ? "bg-blue-50/70" : "";
   const rowId = stock.instrumentKey || stock.symbol;
-  const price = Number(quote?.price ?? quote?.ltp);
-  const ema20 = Number(quote?.ema20);
-  const volume = Number(quote?.volume);
-  const volAvg = Number(quote?.volAvg);
+  const price = toFiniteNumber(quote?.price ?? quote?.ltp);
+  const ema20 = toFiniteNumber(quote?.ema20);
+  const volume = toFiniteNumber(quote?.volume);
+  const volAvg = toFiniteNumber(quote?.volAvg);
   const acc = Number.isFinite(volume) && Number.isFinite(volAvg) && volAvg > 0
     ? volume / volAvg
     : null;
@@ -243,8 +245,8 @@ const StockTableRow = memo(function StockTableRow({
           </div>
           <div className="space-y-1 text-gray-600">
             {velocity.rows.map((row) => {
-              const current = Number(row.current);
-              const prev = Number(row.prev);
+              const current = toFiniteNumber(row.current);
+              const prev = toFiniteNumber(row.prev);
               const change =
                 Number.isFinite(current) && Number.isFinite(prev)
                   ? current - prev
@@ -299,8 +301,8 @@ const StockTableRow = memo(function StockTableRow({
           </div>
           <div className="space-y-1 text-gray-600">
             {priceVelocity.rows.map((row) => {
-              const current = Number(priceVelocity.current);
-              const prev = Number(row.prev);
+              const current = toFiniteNumber(priceVelocity.current);
+              const prev = toFiniteNumber(row.prev);
               const change =
                 Number.isFinite(current) && Number.isFinite(prev)
                   ? current - prev

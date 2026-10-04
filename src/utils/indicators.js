@@ -1,5 +1,17 @@
 const firstDefined = (...values) => values.find((value) => value != null);
 
+/**
+ * `Number(null) === 0` but `Number(undefined) === NaN` — this inconsistency
+ * makes `Number.isFinite(Number(x))` silently treat "no data" (null) as a
+ * real zero. Use this wherever a nullable quote field feeds an isFinite
+ * check, so missing data renders as "--" instead of a misleading 0/Below/etc.
+ */
+export const toFiniteNumber = (value) => {
+  if (value == null) return NaN;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : NaN;
+};
+
 const toNumberOrNull = (value) => {
   if (value == null || value === "") return null;
   const parsed = Number(value);

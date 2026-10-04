@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
+import { toFiniteNumber } from "../utils/indicators";
 
 const displaySymbol = (symbol) =>
   String(symbol || "").replace(".NS", "").replace(".BO", "");
@@ -75,11 +76,11 @@ const GreekTableRow = memo(function GreekTableRow({
 }) {
   const prevPriceRef = useRef(quote?.ltp ?? quote?.price ?? quote?.optionPremium);
   const [flash, setFlash] = useState(null);
-  const rate = Number(quote?.ltp ?? quote?.price ?? quote?.optionPremium);
-  const vwap = Number(quote?.vwap);
-  const oi = Number(quote?.oi ?? quote?.openInterest);
-  const rsi = Number(quote?.rsi);
-  const oiChange = Number(quote?.oiChange ?? quote?.changeInOi);
+  const rate = toFiniteNumber(quote?.ltp ?? quote?.price ?? quote?.optionPremium);
+  const vwap = toFiniteNumber(quote?.vwap);
+  const oi = toFiniteNumber(quote?.oi ?? quote?.openInterest);
+  const rsi = toFiniteNumber(quote?.rsi);
+  const oiChange = toFiniteNumber(quote?.oiChange ?? quote?.changeInOi);
   const oiChangeColor =
     oiChange > 0 ? "text-green-600" : oiChange < 0 ? "text-red-600" : "text-gray-600";
   const vwapColor =

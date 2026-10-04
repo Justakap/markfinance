@@ -4,6 +4,7 @@ import StockSearchDropdown from "./StockSearchDropdown";
 import TableExportMenu from "./TableExportMenu";
 import GreekTableRow from "./GreekTableRow";
 import { apiFetch } from "../utils/api";
+import { toFiniteNumber } from "../utils/indicators";
 import { confirmAction, showError, showSuccess } from "../utils/toast";
 
 const ROW_HEIGHT = 56;
@@ -165,9 +166,9 @@ const GreekTable = ({
           symbol: stock.symbol,
           company: stock.name || "",
           rate: Number.isFinite(
-            Number(quote?.ltp ?? quote?.price ?? quote?.optionPremium),
+            toFiniteNumber(quote?.ltp ?? quote?.price ?? quote?.optionPremium),
           )
-            ? Number(
+            ? toFiniteNumber(
                 quote?.ltp ?? quote?.price ?? quote?.optionPremium,
               ).toFixed(2)
             : "--",

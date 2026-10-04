@@ -8,6 +8,7 @@ import { apiFetch } from "../utils/api";
 import {
   getRsiDataForTimeframe,
   normalizeIndicatorQuote,
+  toFiniteNumber,
 } from "../utils/indicators";
 import { confirmAction, showError, showSuccess } from "../utils/toast";
 
@@ -36,7 +37,8 @@ const getVelocityValue = (quote) => {
 
   const allValid = pairs.every(
     ([current, prev]) =>
-      Number.isFinite(Number(current)) && Number.isFinite(Number(prev)),
+      Number.isFinite(toFiniteNumber(current)) &&
+      Number.isFinite(toFiniteNumber(prev)),
   );
 
   if (!allValid) return 0;
@@ -55,7 +57,7 @@ const getVelocityValue = (quote) => {
 
 const getPriceVelocityValue = (quote) => {
   const normalized = normalizeIndicatorQuote(quote);
-  const current = Number(normalized?.price ?? normalized?.ltp);
+  const current = toFiniteNumber(normalized?.price ?? normalized?.ltp);
   const pairs = [
     [current, normalized?.prevPrice5m],
     [current, normalized?.prevPrice15m],
@@ -65,7 +67,8 @@ const getPriceVelocityValue = (quote) => {
 
   const allValid = pairs.every(
     ([price, prev]) =>
-      Number.isFinite(Number(price)) && Number.isFinite(Number(prev)),
+      Number.isFinite(toFiniteNumber(price)) &&
+      Number.isFinite(toFiniteNumber(prev)),
   );
 
   if (!allValid) return 0;
@@ -85,8 +88,8 @@ const formatTrendLabel = (value) => {
 };
 
 const getDmaStatusValue = (quote) => {
-  const price = Number(quote?.price ?? quote?.ltp);
-  const ema20 = Number(quote?.ema20);
+  const price = toFiniteNumber(quote?.price ?? quote?.ltp);
+  const ema20 = toFiniteNumber(quote?.ema20);
   if (!Number.isFinite(price) || !Number.isFinite(ema20)) return 0;
   return price > ema20 ? 1 : -1;
 };
@@ -264,8 +267,10 @@ const StockTable = ({
       stocks.map((stock) => {
         const quote = getQuote(stock);
         const rsiData = getRsiData(quote, rsiTimeframe);
-        const price = Number(quote?.price ?? quote?.ltp);
-        const ema20 = Number(quote?.ema20);
+        const price = toFiniteNumber(quote?.price ?? quote?.ltp);
+        const ema20 = toFiniteNumber(quote?.ema20);
+        const volume = toFiniteNumber(quote?.volume);
+        const volAvg = toFiniteNumber(quote?.volAvg);
 
         return {
           symbol: stock.symbol,
@@ -278,10 +283,8 @@ const StockTable = ({
           volume: quote?.volume != null ? Number(quote.volume).toLocaleString("en-IN") : "--",
           volAvg: quote?.volAvg != null ? Number(quote.volAvg).toLocaleString("en-IN") : "--",
           vf:
-            Number.isFinite(Number(quote?.volume)) &&
-            Number.isFinite(Number(quote?.volAvg)) &&
-            Number(quote.volAvg) > 0
-              ? (Number(quote.volume) / Number(quote.volAvg)).toFixed(2)
+            Number.isFinite(volume) && Number.isFinite(volAvg) && volAvg > 0
+              ? (volume / volAvg).toFixed(2)
               : "--",
           ema20: Number.isFinite(ema20) ? ema20.toFixed(2) : "--",
           ema75: quote?.ema75 != null ? Number(quote.ema75).toFixed(2) : "--",
