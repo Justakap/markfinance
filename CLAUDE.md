@@ -74,7 +74,7 @@ this one. Do not assume changes here are reflected there or vice versa.
 ## Production
 
 - Frontend: https://markfinance.netlify.app
-- Backend: https://markfinancebackend.onrender.com (Render free tier — expect
+- Backend: https://markfinancebackend1.onrender.com (Render free tier — expect
   a ~20-30s cold start after idle on the first request; this is a platform
   characteristic, not a frontend bug)
 
@@ -140,7 +140,7 @@ session.**
    all).
 2. Never hardcode the backend URL — always go through `API_URL`
    (`src/config/api.js`), which reads `REACT_APP_API_URL`. Production
-   (Netlify) sets this to `https://markfinancebackend.onrender.com` via
+   (Netlify) sets this to `https://markfinancebackend1.onrender.com` via
    `netlify.toml`; local dev uses `.env.local` (see `.env.example`).
    Hardcoded `localhost:5001` strings were previously used in a couple of
    user-facing error messages — removed; don't reintroduce them.
@@ -181,7 +181,7 @@ list of endpoints/shapes. Key things to remember on this side:
 Names only — see `.env.example` for the full list, never commit real values:
 
 - `REACT_APP_API_URL` — backend base URL (production:
-  `https://markfinancebackend.onrender.com`, local dev:
+  `https://markfinancebackend1.onrender.com`, local dev:
   `http://localhost:5001`)
 - `REACT_APP_FIREBASE_API_KEY`
 - `REACT_APP_FIREBASE_AUTH_DOMAIN`
@@ -305,6 +305,17 @@ missing.
   without forcing a breaking `react-scripts`/CRA tooling downgrade; remaining
   advisories are either dev-only CRA tooling dependencies or `xlsx` (see
   Technical Debt above).
+
+### 2026-10-05 (later) — Corrected production backend URL
+
+`netlify.toml`'s `REACT_APP_API_URL` was pointed at
+`https://markfinancebackend.onrender.com`; the actual intended production
+backend is `https://markfinancebackend1.onrender.com`. Both were found to
+serve identical code/data at the time of this fix, so it wasn't
+user-visible, but corrected so the deployed frontend points at the right
+service going forward. If you ever see `markfinancebackend.onrender.com`
+referenced anywhere (old notes, bookmarks), treat the `1` URL as
+authoritative unless told otherwise.
 
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
