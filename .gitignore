@@ -6,6 +6,14 @@
 /.pnp
 .pnp.js
 
+# backend is its own independent git repository (github.com/Justakap/markfinancebackend),
+# checked out locally inside this working tree for convenience. It must never be tracked
+# here as a file/submodule — doing so previously created an orphaned gitlink entry with no
+# .gitmodules registration, which broke Netlify's clone ("No url found for submodule path
+# 'backend' in .gitmodules"). If you need it versioned alongside this repo, use a proper
+# `git submodule add`, not a bare `git add backend`.
+/backend
+
 # testing
 /coverage
 /backend/coverage
