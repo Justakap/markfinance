@@ -2,22 +2,10 @@ import BuyCard from "./BuyCard";
 import SellCard from "./SellCard";
 import RsiBuyCard from "./RsiBuyCard";
 import RsiSellCard from "./RsiSellCard";
+import { getRsiDataForTimeframe } from "../utils/indicators";
 
 const StockModal = ({ closeModal, marketData = [], rsiTimeframe = "1d" }) => {
-  const getRsiValue = (stock) => {
-    switch (rsiTimeframe) {
-      case "1m":
-        return stock.rsi1m;
-      case "5m":
-        return stock.rsi5m;
-      case "15m":
-        return stock.rsi15m;
-      case "1h":
-        return stock.hourlyRsi;
-      default:
-        return stock.rsi;
-    }
-  };
+  const getRsiValue = (stock) => getRsiDataForTimeframe(stock, rsiTimeframe).rsi;
 
   const buyStocks = [...marketData]
     .filter((s) => s.pe)

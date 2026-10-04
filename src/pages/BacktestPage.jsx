@@ -1,46 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import axios from "axios";
-import { Play, Loader2, Search } from "lucide-react";
+import {
+  BadgeInfo,
+  BarChart3,
+  Clock3,
+  Loader2,
+  Play,
+  RefreshCw,
+  Search,
+  Table2,
+  FileText,
+} from "lucide-react";
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { API_URL } from "../config/api";
+import MainLayout from "../layout/MainLayout";
 import { showError, showInfo } from "../utils/toast";
 
-const returnColor = (value) =>
-  (value ?? 0) >= 0 ? "text-green-700" : "text-red-700";
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 2,
+});
 
-const getMarketColor = (market) => {
-  switch (market) {
-    case "NSE":
-      return "bg-blue-100 text-blue-700";
-    case "BSE":
-      return "bg-indigo-100 text-indigo-700";
-    case "NASDAQ":
-      return "bg-green-100 text-green-700";
-    case "NYSE":
-      return "bg-purple-100 text-purple-700";
-    case "CRYPTO":
-      return "bg-orange-100 text-orange-700";
-    default:
-      return "bg-gray-100 text-gray-700";
-  }
-};
-
-const ConditionPill = ({ condition, variant = "entry" }) => (
-  <span
-    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium ${
-      variant === "exit"
-        ? "bg-amber-50 text-amber-800 border border-amber-100"
-        : "bg-blue-50 text-blue-800 border border-blue-100"
-    }`}
-  >
-    {condition.indicator} {condition.operator} {condition.value}
-  </span>
-);
-
-const formatRisk = (value) => {
-  const n = Number(value);
-  return n > 0 ? `${n}%` : "—";
-};
+const compactFormatter = new Intl.NumberFormat("en-IN", {
+  maximumFractionDigits: 0,
+});
 
 const formatDate = (date) =>
   new Date(date).toLocaleDateString("en-IN", {
@@ -48,6 +40,138 @@ const formatDate = (date) =>
     month: "short",
     year: "numeric",
   });
+
+const formatDateTime = (date) =>
+  new Date(date).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+const formatMoney = (value) =>
+  `₹${currencyFormatter.format(Number(value || 0))}`;
+
+const formatPercent = (value, digits = 2) => {
+  const n = Number(value || 0);
+
+  if (!Number.isFinite(n)) return "—";
+
+  const prefix = n > 0 ? "+" : "";
+  return `${prefix}${n.toFixed(digits)}%`;
+};
+
+const formatMetric = (value, digits = 2) => {
+  if (value === Infinity) return "∞";
+
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) return "—";
+
+  return n.toFixed(digits);
+};
+
+const toneClass = (value, invert = false) => {
+  const n = Number(value || 0);
+  const positive = invert ? n <= 0 : n >= 0;
+  return positive ? "text-emerald-600" : "text-rose-600";
+};
+
+const getExchangeClass = (exchange) => {
+  switch (String(exchange || "").toUpperCase()) {
+    case "NSE":
+      return "bg-blue-50 text-blue-700 border-blue-100";
+    case "BSE":
+      return "bg-indigo-50 text-indigo-700 border-indigo-100";
+    case "MCX":
+      return "bg-amber-50 text-amber-700 border-amber-100";
+    default:
+      return "bg-slate-50 text-slate-700 border-slate-200";
+  }
+};
+
+const getTypeBadgeClass = (type) => {
+  switch (String(type || "").toUpperCase()) {
+    case "EQ":
+      return "bg-emerald-50 text-emerald-700 border-emerald-100";
+    case "FUT":
+      return "bg-violet-50 text-violet-700 border-violet-100";
+    case "OPT":
+      return "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100";
+    case "COM":
+      return "bg-amber-50 text-amber-700 border-amber-100";
+    case "IDX":
+      return "bg-cyan-50 text-cyan-700 border-cyan-100";
+    case "ETF":
+      return "bg-sky-50 text-sky-700 border-sky-100";
+    default:
+      return "bg-slate-50 text-slate-700 border-slate-200";
+  }
+};
+
+const ConditionPill = ({ condition, variant = "entry" }) => (
+  <span
+    className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border ${
+      variant === "exit"
+        ? "bg-amber-50 text-amber-800 border-amber-100"
+        : "bg-blue-50 text-blue-800 border-blue-100"
+    }`}
+  >
+    {condition.indicator} {condition.operator} {condition.value}
+  </span>
+);
+
+const TabButton = ({ active, children, onClick, icon: Icon }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition ${
+      active
+        ? "border-blue-200 bg-blue-50 text-blue-700"
+        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+    }`}
+  >
+    {Icon && <Icon size={16} />}
+    {children}
+  </button>
+);
+
+const StatCard = ({ label, value, hint, tone = "neutral" }) => (
+  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      {label}
+    </div>
+    <div
+      className={`mt-2 text-2xl font-bold ${
+        tone === "positive"
+          ? "text-emerald-600"
+          : tone === "negative"
+            ? "text-rose-600"
+            : tone === "amber"
+              ? "text-amber-600"
+              : "text-slate-900"
+      }`}
+    >
+      {value}
+    </div>
+    {hint && <div className="mt-1 text-xs text-slate-500">{hint}</div>}
+  </div>
+);
+
+const ResultBanner = ({ tone = "blue", children }) => {
+  const styles = {
+    blue: "border-blue-200 bg-blue-50 text-blue-900",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    slate: "border-slate-200 bg-slate-50 text-slate-900",
+  };
+
+  return (
+    <div className={`rounded-2xl border px-5 py-4 text-sm ${styles[tone]}`}>
+      {children}
+    </div>
+  );
+};
 
 const BacktestPage = () => {
   const { strategyId } = useParams();
@@ -57,6 +181,7 @@ const BacktestPage = () => {
 
   const [strategy, setStrategy] = useState(null);
   const [symbol, setSymbol] = useState("");
+  const [instrumentKey, setInstrumentKey] = useState("");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [period, setPeriod] = useState("1y");
@@ -64,7 +189,11 @@ const BacktestPage = () => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
   const searchRef = useRef(null);
+  const searchCacheRef = useRef(new Map());
+  const searchSeqRef = useRef(0);
+  const suppressSearchRef = useRef(false);
 
   const getEntryConditions = () =>
     strategy?.entryConditions?.length
@@ -117,37 +246,74 @@ const BacktestPage = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const searchStocks = async (value) => {
-    if (value.length < 2) {
+  useEffect(() => {
+    const term = query.trim();
+
+    if (suppressSearchRef.current) {
+      return undefined;
+    }
+
+    if (term.length < 2) {
       setSearchResults([]);
       setSearchOpen(false);
-      return;
+      return undefined;
     }
-    setSearchOpen(true);
-    try {
-      const res = await axios.get(`${API_URL}/api/search-stock?q=${value}`);
-      setSearchResults(res.data);
-    } catch (error) {
-      console.log(error);
+
+    const timer = setTimeout(async () => {
+      const cacheKey = term.toUpperCase();
+      const cached = searchCacheRef.current.get(cacheKey);
+
+      if (cached) {
+        setSearchResults(cached);
+        setSearchOpen(true);
+        return;
+      }
+
+      const requestId = ++searchSeqRef.current;
+
+      try {
+        const res = await axios.get(
+          `${API_URL}/api/search?q=${encodeURIComponent(term)}`,
+        );
+
+        if (requestId !== searchSeqRef.current) return;
+
+        const rows = Array.isArray(res.data) ? res.data : [];
+        searchCacheRef.current.set(cacheKey, rows);
+        setSearchResults(rows);
+        setSearchOpen(true);
+      } catch (error) {
+        if (requestId === searchSeqRef.current) {
+          setSearchResults([]);
+          setSearchOpen(false);
+        }
+        if (error?.response?.status !== 429) {
+          console.log(error);
+        }
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  useEffect(() => {
+    if (results) {
+      setActiveTab("overview");
     }
-  };
+  }, [results]);
 
   const runBacktest = async () => {
     if (!symbol) {
-      showInfo("Please enter a stock symbol");
+      showInfo("Please choose a symbol from search");
       return;
     }
 
     try {
       setLoading(true);
-      let runSymbol = symbol.trim().toUpperCase();
-      if (!runSymbol.includes(".") && /^[A-Z]{2,12}$/.test(runSymbol)) {
-        runSymbol = `${runSymbol}.NS`;
-      }
-
       const res = await axios.post(`${API_URL}/api/backtest/run`, {
         strategyId,
-        symbol: runSymbol,
+        symbol: symbol.trim().toUpperCase(),
+        instrumentKey,
         period,
         capital,
         validationMode,
@@ -165,202 +331,331 @@ const BacktestPage = () => {
   };
 
   const summary = results?.summary;
+  const equityData = useMemo(() => {
+    const points = results?.fullEquityCurve?.length
+      ? results.fullEquityCurve
+      : results?.equityCurve || [];
+
+    return points.map((point) => ({
+      ...point,
+      label: formatDate(point.date),
+      shortLabel: new Date(point.date).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+      }),
+    }));
+  }, [results]);
+
+  const summaryCards = useMemo(() => {
+    if (!summary) return [];
+
+    return [
+      {
+        label: "Net Profit",
+        value: formatMoney(summary.netProfit),
+        tone: Number(summary.netProfit || 0) >= 0 ? "positive" : "negative",
+        hint: `Final capital ${formatMoney(summary.finalCapital)}`,
+      },
+      {
+        label: "Total Trades",
+        value: compactFormatter.format(summary.totalTrades || 0),
+        hint: `${summary.winningTrades || 0} wins / ${summary.losingTrades || 0} losses`,
+      },
+      {
+        label: "Win Rate",
+        value: formatPercent(summary.winRate),
+        tone: Number(summary.winRate || 0) >= 50 ? "positive" : "negative",
+        hint: `Avg trade ${formatPercent(summary.avgReturn)}`,
+      },
+      {
+        label: "Profit Factor",
+        value: formatMetric(summary.profitFactor),
+        tone: Number(summary.profitFactor || 0) >= 1 ? "positive" : "negative",
+        hint: `Best ${formatPercent(summary.bestTrade)} · Worst ${formatPercent(summary.worstTrade)}`,
+      },
+      {
+        label: "Max Drawdown",
+        value: formatPercent(summary.maxDrawdown),
+        tone: "negative",
+        hint: "Peak-to-trough decline",
+      },
+      {
+        label: "Outperformance",
+        value: formatPercent(summary.outperformance),
+        tone: Number(summary.outperformance || 0) >= 0 ? "positive" : "negative",
+        hint: `vs buy & hold ${formatPercent(summary.outperformancePct)}`,
+      },
+    ];
+  }, [summary]);
+
+  const signalCards = useMemo(() => {
+    const stats = results?.signalStats || {};
+
+    return [
+      ["Entry Signals", stats.entrySignalsFound],
+      ["Entries Executed", stats.entriesExecuted],
+      ["Exit Signals", stats.exitSignalsFound],
+      ["Exits Executed", stats.exitsExecuted],
+      ["Skipped Entries", stats.skippedEntryNoNextBar],
+      ["Skipped Exits", stats.skippedExitNoNextBar],
+    ];
+  }, [results]);
+
+  const tradeRows = useMemo(() => results?.trades || [], [results]);
+  const auditRows = useMemo(() => results?.auditLog || [], [results]);
+
+  const searchSubtitle = useMemo(() => {
+    if (!symbol) return "Search Upstox instruments and choose a symbol";
+
+    return instrumentKey
+      ? `${symbol} · ${instrumentKey}`
+      : `${symbol} · resolved by symbol search`;
+  }, [instrumentKey, symbol]);
+
+  const backtestMeta = results?.backtestMeta;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Strategy Backtesting</h1>
-          <p className="text-gray-500 mt-2">
-            Test your strategy against historical data
-          </p>
-        </div>
-
-        {strategy?.backtestInterval && (
-          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            {strategy.backtestInterval !== "1d" && (
-              <p>
-                Primary candle timeframe:{" "}
-                <strong>
-                  {strategy.intervalLimits?.[strategy.backtestInterval]?.label ||
-                    strategy.backtestInterval}
-                </strong>
-                . Yahoo limits intraday history (max ~
-                {strategy.intervalLimits?.[strategy.backtestInterval]?.maxDays}{" "}
-                days).
-              </p>
-            )}
-            {strategy.backtestPreview?.requiredIntervals?.length > 1 && (
-              <p className="mt-1">
-                Multi-timeframe strategy — RSI values are aligned onto the same
-                candles for backtesting.
-              </p>
-            )}
-            <p className="mt-1 text-amber-800">
-              Trades execute on the next candle open after a signal (no
-              look-ahead bias).
-            </p>
-          </div>
-        )}
-
+    <MainLayout
+      title="Backtest"
+      subtitle={
+        strategy?.name ||
+        "AlgoRooms-style historical simulation powered by Upstox candles"
+      }
+    >
+      <div className="px-6 py-6 pb-20 space-y-6">
         {strategy && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 mb-6">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-              <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {strategy.name}
-                </h2>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    {strategy.name}
+                  </h2>
+                  {strategy.backtestInterval && (
+                    <span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
+                      {strategy.intervalLimits?.[strategy.backtestInterval]?.label ||
+                        strategy.backtestInterval}
+                    </span>
+                  )}
+                </div>
+
                 {strategy.description && (
-                  <p className="text-sm text-slate-500 mt-1">
+                  <p className="mt-1 text-sm text-slate-500">
                     {strategy.description}
                   </p>
                 )}
 
-                <div className="mt-4">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
-                    Entry
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {getEntryConditions().map((condition, index) => (
-                      <div key={index} className="flex items-center gap-1.5">
-                        <ConditionPill condition={condition} />
-                        {index !== getEntryConditions().length - 1 && (
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">
-                            {getConditionConnector(condition)}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <p className="text-[10px] uppercase tracking-wide text-slate-400 mb-1.5">
-                    Exit
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {getExitConditions().length ? (
-                      getExitConditions().map((condition, index) => (
-                        <div key={index} className="flex items-center gap-1.5">
-                          <ConditionPill
-                            condition={condition}
-                            variant="exit"
-                          />
-                          {index !== getExitConditions().length - 1 && (
-                            <span className="text-[10px] font-bold text-slate-400 uppercase">
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Entry Rules
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {getEntryConditions().map((condition, index) => (
+                        <div key={`${condition.indicator}-${index}`} className="flex items-center gap-1.5">
+                          <ConditionPill condition={condition} />
+                          {index !== getEntryConditions().length - 1 && (
+                            <span className="text-[10px] font-bold uppercase text-slate-400">
                               {getConditionConnector(condition)}
                             </span>
                           )}
                         </div>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-500">
-                        Stop loss / target only
-                      </span>
-                    )}
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      Exit Rules
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {getExitConditions().length ? (
+                        getExitConditions().map((condition, index) => (
+                          <div key={`${condition.indicator}-${index}`} className="flex items-center gap-1.5">
+                            <ConditionPill condition={condition} variant="exit" />
+                            {index !== getExitConditions().length - 1 && (
+                              <span className="text-[10px] font-bold uppercase text-slate-400">
+                                {getConditionConnector(condition)}
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <span className="text-xs text-slate-500">
+                          Stop loss / target only
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-3 shrink-0">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 min-w-[100px] text-center">
-                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+              <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[360px]">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                  <div className="text-[10px] font-semibold uppercase text-slate-400">
                     Stop Loss
-                  </p>
-                  <p className="text-base font-bold text-slate-700 mt-0.5">
-                    {formatRisk(strategy.stopLoss)}
-                  </p>
+                  </div>
+                  <div className="mt-1 text-base font-bold text-slate-700">
+                    {Number(strategy.stopLoss) ? `${strategy.stopLoss}%` : "—"}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 min-w-[100px] text-center">
-                  <p className="text-[10px] font-semibold uppercase text-slate-400">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                  <div className="text-[10px] font-semibold uppercase text-slate-400">
                     Target
-                  </p>
-                  <p className="text-base font-bold text-slate-700 mt-0.5">
-                    {formatRisk(strategy.target)}
-                  </p>
+                  </div>
+                  <div className="mt-1 text-base font-bold text-slate-700">
+                    {Number(strategy.target) ? `${strategy.target}%` : "—"}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center">
+                  <div className="text-[10px] font-semibold uppercase text-slate-400">
+                    Logic
+                  </div>
+                  <div className="mt-1 text-base font-bold text-slate-700">
+                    {strategy.logic || "AND"}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 mb-8">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">
-            Backtest Configuration
-          </h2>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="relative md:col-span-1" ref={searchRef}>
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">
-                Stock
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Backtest Configuration
+              </h2>
+              <p className="text-sm text-slate-500">{searchSubtitle}</p>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600">
+              <BadgeInfo size={14} />
+              Closed candles, next-bar execution, slippage and commission
+            </div>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-4">
+            <div className="relative xl:col-span-2" ref={searchRef}>
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Symbol
               </label>
               <div className="relative">
                 <Search
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
                 />
                 <input
                   type="text"
-                  placeholder="Search symbol or company…"
+                  placeholder="Search stocks, futures, options, commodities..."
                   value={query}
                   onChange={(e) => {
+                    suppressSearchRef.current = false;
                     setQuery(e.target.value);
-                    searchStocks(e.target.value);
                   }}
                   onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
-                  className="w-full border border-slate-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-slate-200 py-3 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
+                {query && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      suppressSearchRef.current = false;
+                      setQuery("");
+                      setSearchResults([]);
+                      setSearchOpen(false);
+                      setSymbol("");
+                      setInstrumentKey("");
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-500 hover:text-slate-700"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
+
               {searchOpen && searchResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                  {searchResults.map((stock) => (
-                    <button
-                      key={stock.symbol}
-                      type="button"
-                      onClick={() => {
-                        setSymbol(stock.symbol);
-                        setQuery(`${stock.symbol} — ${stock.name}`);
-                        setSearchResults([]);
-                        setSearchOpen(false);
-                      }}
-                      className="w-full text-left px-3 py-3 hover:bg-blue-50 border-b border-slate-100 last:border-0 cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <div className="font-semibold text-sm text-slate-900">
-                            {stock.symbol}
+                <div className="absolute z-40 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+                  {searchResults.map((stock) => {
+                    const exchange = stock.exchange || stock.market || "NSE";
+                    const type = stock.type || stock.instrumentType || "";
+
+                    return (
+                      <button
+                        key={stock.instrumentKey || `${stock.symbol}-${stock.name}`}
+                        type="button"
+                        onClick={() => {
+                          suppressSearchRef.current = true;
+                          setTimeout(() => {
+                            suppressSearchRef.current = false;
+                          }, 400);
+
+                          setSymbol(stock.symbol);
+                          setInstrumentKey(stock.instrumentKey || "");
+                          setQuery(stock.symbol);
+                          setSearchResults([]);
+                          setSearchOpen(false);
+                        }}
+                        className="w-full border-b border-slate-100 px-4 py-3 text-left transition hover:bg-blue-50 last:border-0"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div className="font-semibold text-slate-900">
+                                {stock.symbol}
+                              </div>
+                              {exchange && (
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getExchangeClass(exchange)}`}
+                                >
+                                  {exchange}
+                                </span>
+                              )}
+                              {type && (
+                                <span
+                                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${getTypeBadgeClass(type)}`}
+                                >
+                                  {type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 truncate text-xs text-slate-500">
+                              {stock.name}
+                            </div>
                           </div>
-                          <div className="text-xs text-slate-500 truncate mt-0.5">
-                            {stock.name}
-                          </div>
+                          {stock.instrumentKey && (
+                            <span className="shrink-0 rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              {stock.instrumentKey}
+                            </span>
+                          )}
                         </div>
-                        <div className="flex gap-1 shrink-0">
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getMarketColor(stock.market)}`}
-                          >
-                            {stock.market}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+
               {symbol && (
-                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-3 py-1">
-                  <span className="text-xs font-semibold text-blue-700">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
                     {symbol}
                   </span>
+                  {instrumentKey && (
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
+                      {instrumentKey}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
+
             <div>
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Period
               </label>
               <select
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="1mo">1 Month</option>
                 <option value="3mo">3 Months</option>
@@ -370,12 +665,13 @@ const BacktestPage = () => {
                 <option value="5y">5 Years</option>
               </select>
             </div>
+
             <div>
-              <label className="text-xs font-medium text-slate-500 uppercase tracking-wide block mb-1.5">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Capital (INR)
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">
                   ₹
                 </span>
                 <input
@@ -384,247 +680,503 @@ const BacktestPage = () => {
                   step={1000}
                   value={capital}
                   onChange={(e) => setCapital(Number(e.target.value))}
-                  className="w-full border border-slate-200 rounded-lg pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-slate-200 py-3 pl-7 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
             </div>
+
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={runBacktest}
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <Play size={16} />
+                )}
+                {loading ? "Running..." : "Run Backtest"}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={runBacktest}
-            disabled={loading}
-            className="mt-5 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition"
-          >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Play size={16} />
+        </section>
+
+        {strategy?.backtestInterval && (
+          <ResultBanner tone="amber">
+            {strategy.backtestInterval !== "1d" && (
+              <p>
+                Primary candle timeframe is{" "}
+                <strong>
+                  {strategy.intervalLimits?.[strategy.backtestInterval]?.label ||
+                    strategy.backtestInterval}
+                </strong>
+                . Intraday history is capped by Upstox limits.
+              </p>
             )}
-            {loading ? "Running…" : "Run Backtest"}
-          </button>
-        </div>
+            {strategy.backtestPreview?.requiredIntervals?.length > 1 && (
+              <p className="mt-1">
+                Multi-timeframe strategy detected. Auxiliary RSI frames are
+                aligned onto the primary bars during simulation.
+              </p>
+            )}
+            <p className="mt-1">
+              Trades execute on the next candle open after a signal, with
+              slippage and commission applied.
+            </p>
+          </ResultBanner>
+        )}
 
         {loading && (
-          <div className="bg-white shadow-sm border rounded-xl p-6 mb-8">
-            <h3 className="font-semibold mb-2">Running Backtest</h3>
-            <p className="text-gray-500">Fetching historical candles…</p>
-            <p className="text-gray-500">Calculating indicators…</p>
-            <p className="text-gray-500">Evaluating strategy…</p>
-          </div>
+          <ResultBanner tone="blue">
+            <div className="space-y-1">
+              <p className="font-medium">Running backtest</p>
+              <p>Fetching closed candles from Upstox...</p>
+              <p>Building indicators and evaluating signals...</p>
+              <p>Preparing trade list and equity curve...</p>
+            </div>
+          </ResultBanner>
         )}
 
         {results && (
           <>
             {results.backtestMeta?.message && (
-              <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-900">
+              <ResultBanner tone="blue">
                 {results.backtestMeta.message}
                 {results.backtestMeta.candleCount != null && (
-                  <span className="block mt-1 text-blue-700">
+                  <span className="mt-1 block text-blue-700">
                     Evaluated {results.backtestMeta.candleCount} candles on{" "}
                     {results.backtestMeta.intervalLabel} timeframe.
                   </span>
                 )}
-              </div>
+              </ResultBanner>
             )}
 
-            {results.summary?.totalTrades === 0 && (
-              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
-                No trades were generated for this symbol and period.
-              </div>
-            )}
-
-            {results.signalStats && (
-              <div className="mb-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                {[
-                  ["Entry Signals", results.signalStats.entrySignalsFound],
-                  ["Entries Executed", results.signalStats.entriesExecuted],
-                  ["Exit Signals", results.signalStats.exitSignalsFound],
-                  ["Exits Executed", results.signalStats.exitsExecuted],
-                  ["Skipped Entries", results.signalStats.skippedEntryNoNextBar],
-                  ["Skipped Exits", results.signalStats.skippedExitNoNextBar],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="bg-white border border-gray-200 rounded-lg p-3 text-center"
-                  >
-                    <p className="text-xs text-gray-500 uppercase">{label}</p>
-                    <p className="text-xl font-bold text-gray-900">{value ?? 0}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-              {[
-                {
-                  label: "Net Profit",
-                  value: `₹${Number(summary?.netProfit ?? 0).toLocaleString()}`,
-                  positive: (summary?.netProfit ?? 0) >= 0,
-                },
-                { label: "Win Rate", value: `${summary?.winRate}%`, positive: summary?.winRate >= 50 },
-                { label: "Profit Factor", value: summary?.profitFactor, positive: summary?.profitFactor >= 1 },
-                { label: "Max Drawdown", value: `${summary?.maxDrawdown}%`, positive: false, amber: true },
-                { label: "Total Trades", value: summary?.totalTrades, positive: true },
-                { label: "Winning Trades", value: summary?.winningTrades, positive: true },
-                { label: "Losing Trades", value: summary?.losingTrades, positive: false },
-                { label: "Avg Holding Days", value: summary?.averageHoldingDays, positive: true },
-                { label: "Best Trade", value: `${summary?.bestTrade}%`, positive: true },
-                { label: "Worst Trade", value: `${summary?.worstTrade}%`, positive: false },
-              ].map((card) => (
-                <div key={card.label} className="bg-white border border-gray-200 rounded-lg p-4">
-                  <p className="text-xs font-bold tracking-wide text-gray-500 uppercase mb-2">
-                    {card.label}
+            {(results.summary?.totalTrades === 0 ||
+              results.summary?.backtestHint) && (
+              <ResultBanner tone="amber">
+                {results.summary?.totalTrades === 0 && (
+                  <p className="font-medium">
+                    No trades were generated for this symbol and period.
                   </p>
-                  <div
-                    className={`text-2xl font-bold ${
-                      card.amber
-                        ? "text-amber-600"
-                        : card.positive
-                          ? "text-green-600"
-                          : "text-red-600"
-                    }`}
-                  >
-                    {card.value}
-                  </div>
-                </div>
+                )}
+                {results.summary?.backtestHint && (
+                  <p className={results.summary?.totalTrades === 0 ? "mt-2" : ""}>
+                    {results.summary.backtestHint}
+                  </p>
+                )}
+              </ResultBanner>
+            )}
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              {summaryCards.map((card) => (
+                <StatCard
+                  key={card.label}
+                  label={card.label}
+                  value={card.value}
+                  hint={card.hint}
+                  tone={card.tone}
+                />
               ))}
             </div>
 
-            <div className="bg-gradient-to-r from-blue-50 to-emerald-50 border border-blue-100 rounded-xl p-5 mb-8">
-              <h3 className="font-semibold text-gray-900 mb-3">
-                Strategy vs Buy & Hold
-              </h3>
-              <div className="grid md:grid-cols-4 gap-4 text-sm">
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <p className="text-gray-500">Strategy Return</p>
-                  <p
-                    className={`text-xl font-bold ${returnColor(summary?.totalReturn)}`}
-                  >
-                    {summary?.totalReturn}%
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Equity Curve
+                  </h3>
+                  <p className="text-sm text-slate-500">
+                    Strategy equity vs buy and hold over the evaluated window
                   </p>
                 </div>
-                <div>
-                  <p className="text-gray-500">Buy & Hold Return</p>
-                  <p
-                    className={`text-xl font-bold ${returnColor(summary?.buyAndHoldReturn)}`}
-                  >
-                    {summary?.buyAndHoldReturn}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Difference</p>
-                  <p
-                    className={`text-xl font-bold ${returnColor(summary?.outperformance)}`}
-                  >
-                    {summary?.outperformance >= 0 ? "+" : ""}
-                    {summary?.outperformance}%
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-500">Outperformance</p>
-                  <p
-                    className={`text-xl font-bold ${returnColor(summary?.outperformancePct)}`}
-                  >
-                    {summary?.outperformancePct}%
-                  </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                    {backtestMeta?.intervalLabel || "Interval"}
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                    {compactFormatter.format(backtestMeta?.candleCount || 0)} candles
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                    {backtestMeta?.effectiveDays || "—"} days
+                  </div>
+                  {backtestMeta?.capped && (
+                    <div className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                      capped
+                    </div>
+                  )}
                 </div>
               </div>
-              <p className="mt-3 text-sm text-gray-600">
-                Longest win streak: {summary?.longestWinningStreak} · Longest
-                loss streak: {summary?.longestLosingStreak}
-              </p>
+
+              <div className="h-[360px] w-full">
+                {equityData.length ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={equityData} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                      <XAxis
+                        dataKey="shortLabel"
+                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        minTickGap={24}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: "#64748b" }}
+                        tickFormatter={(value) => formatMoney(value)}
+                        width={72}
+                      />
+                      <Tooltip
+                        formatter={(value, name) => [
+                          formatMoney(value),
+                          name === "equity" ? "Strategy" : "Buy & Hold",
+                        ]}
+                        labelFormatter={(label) => label}
+                        contentStyle={{
+                          borderRadius: "12px",
+                          border: "1px solid #e2e8f0",
+                          boxShadow: "0 14px 30px rgba(15, 23, 42, 0.08)",
+                        }}
+                      />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="equity"
+                        stroke="#2563eb"
+                        strokeWidth={2.4}
+                        dot={false}
+                        name="Strategy"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="buyHoldEquity"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={false}
+                        name="Buy & Hold"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 text-sm text-slate-500">
+                    Run a backtest to view the equity curve.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="flex flex-wrap gap-2">
+              <TabButton
+                active={activeTab === "overview"}
+                onClick={() => setActiveTab("overview")}
+                icon={BarChart3}
+              >
+                Overview
+              </TabButton>
+              <TabButton
+                active={activeTab === "trades"}
+                onClick={() => setActiveTab("trades")}
+                icon={Table2}
+              >
+                Trades
+              </TabButton>
+              <TabButton
+                active={activeTab === "audit"}
+                onClick={() => setActiveTab("audit")}
+                icon={FileText}
+              >
+                Audit
+              </TabButton>
             </div>
 
-            <div className="bg-white shadow-sm border rounded-xl border-slate-800 p-6 mb-8">
-              <h2 className="text-xl font-semibold mb-4">Trade History</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left border-b border-gray-200 text-gray-500">
-                      <th className="pb-3">#</th>
-                      <th className="pb-3">Entry</th>
-                      <th className="pb-3">Exit</th>
-                      <th className="pb-3">Buy</th>
-                      <th className="pb-3">Sell</th>
-                      <th className="pb-3">Return</th>
-                      <th className="pb-3">Days</th>
-                      <th className="pb-3">Reason</th>
-                      {validationMode && <th className="pb-3">Verified</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {results.trades?.map((trade, idx) => (
-                      <tr key={idx} className="border-b border-gray-100">
-                        <td className="py-3">{idx + 1}</td>
-                        <td className="py-3">{formatDate(trade.entryDate)}</td>
-                        <td className="py-3">{formatDate(trade.exitDate)}</td>
-                        <td className="py-3">₹{trade.entryPrice}</td>
-                        <td className="py-3">₹{trade.exitPrice}</td>
-                        <td
-                          className={`py-3 font-medium ${
-                            trade.returnPct > 0
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {trade.returnPct}%
-                        </td>
-                        <td className="py-3">{trade.holdingDays}</td>
-                        <td className="py-3">{trade.reason}</td>
-                        {validationMode && (
-                          <td className="py-3">
-                            {trade.entryConfirmed && trade.exitConfirmed ? (
-                              <span className="text-green-600 font-medium">
-                                TRUE
-                              </span>
-                            ) : (
-                              <span className="text-red-600 font-medium">
-                                FALSE
-                              </span>
-                            )}
-                          </td>
-                        )}
-                      </tr>
+            {activeTab === "overview" && (
+              <div className="grid gap-4 xl:grid-cols-2">
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Signal Flow
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        Entry and exit confirmation counts
+                      </p>
+                    </div>
+                    <Clock3 size={16} className="text-slate-400" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                    {signalCards.map(([label, value]) => (
+                      <div
+                        key={label}
+                        className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {label}
+                        </div>
+                        <div className="mt-1 text-2xl font-bold text-slate-900">
+                          {compactFormatter.format(value || 0)}
+                        </div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                  </div>
+                </section>
 
-            {validationMode && results.auditLog?.length > 0 && (
-              <div className="bg-gray-900 text-gray-100 rounded-xl p-6 mb-8 font-mono text-xs overflow-x-auto">
-                <h2 className="text-lg font-semibold mb-4 text-white">
-                  Validation Audit Log
-                </h2>
-                {results.auditLog.map((entry) => (
-                  <div key={entry.tradeNumber} className="mb-6 border-b border-gray-700 pb-4">
-                    <p className="text-yellow-400 font-bold">
-                      Trade #{entry.tradeNumber}
-                    </p>
-                    <p>
-                      Entry: {formatDate(entry.entry.date)} @ ₹
-                      {entry.entry.price}
-                    </p>
-                    <p className="text-gray-400">{entry.entry.reason}</p>
-                    <p>
-                      Exit: {formatDate(entry.exit.date)} @ ₹
-                      {entry.exit.price} — {entry.exit.reason}
-                    </p>
-                    <p>PnL: ₹{entry.pnl} ({entry.returnPct}%)</p>
-                    <p
-                      className={
-                        entry.confirmed ? "text-green-400" : "text-red-400"
-                      }
-                    >
-                      Confirmed: {entry.confirmed ? "TRUE" : "FALSE"}
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Backtest Summary
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Core run metadata and simulation posture
                     </p>
                   </div>
-                ))}
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Data Source
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        Upstox
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Candle Count
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {compactFormatter.format(backtestMeta?.candleCount || 0)}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Requested Period
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {backtestMeta?.requestedPeriod || period}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Run Time
+                      </div>
+                      <div className="mt-1 font-semibold text-slate-900">
+                        {results?.backtestTimeMs != null
+                          ? `${Number(results.backtestTimeMs).toLocaleString()} ms`
+                          : "—"}
+                      </div>
+                    </div>
+                  </div>
+                </section>
               </div>
+            )}
+
+            {activeTab === "trades" && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Trade History
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Next-bar executions with slippage and costs applied
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600">
+                    <RefreshCw size={14} />
+                    {tradeRows.length} trades
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-400">
+                        <th className="pb-3 pr-4">#</th>
+                        <th className="pb-3 pr-4">Entry</th>
+                        <th className="pb-3 pr-4">Exit</th>
+                        <th className="pb-3 pr-4">Entry Price</th>
+                        <th className="pb-3 pr-4">Exit Price</th>
+                        <th className="pb-3 pr-4">Return</th>
+                        <th className="pb-3 pr-4">PnL</th>
+                        <th className="pb-3 pr-4">Days</th>
+                        <th className="pb-3 pr-4">Reason</th>
+                        {validationMode && <th className="pb-3 pr-4">Verified</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tradeRows.length ? (
+                        tradeRows.map((trade, idx) => (
+                          <tr
+                            key={`${trade.entryDate}-${trade.exitDate}-${idx}`}
+                            className="border-b border-slate-100 last:border-0"
+                          >
+                            <td className="py-3 pr-4 font-medium text-slate-500">
+                              {idx + 1}
+                            </td>
+                            <td className="py-3 pr-4">
+                              <div className="font-medium text-slate-900">
+                                {formatDate(trade.entryDate)}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                Signal {formatDateTime(trade.signalEntryDate || trade.entryDate)}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4">
+                              <div className="font-medium text-slate-900">
+                                {formatDate(trade.exitDate)}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                Signal {formatDateTime(trade.signalExitDate || trade.exitDate)}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-4 font-medium text-slate-900">
+                              {formatMoney(trade.entryPrice)}
+                            </td>
+                            <td className="py-3 pr-4 font-medium text-slate-900">
+                              {formatMoney(trade.exitPrice)}
+                            </td>
+                            <td
+                              className={`py-3 pr-4 font-semibold ${toneClass(
+                                trade.returnPct,
+                              )}`}
+                            >
+                              {formatPercent(trade.returnPct)}
+                            </td>
+                            <td
+                              className={`py-3 pr-4 font-semibold ${toneClass(
+                                trade.pnl,
+                              )}`}
+                            >
+                              {formatMoney(trade.pnl)}
+                            </td>
+                            <td className="py-3 pr-4 text-slate-700">
+                              {trade.holdingDays || 0}
+                            </td>
+                            <td className="py-3 pr-4 text-slate-700">
+                              {trade.reason}
+                            </td>
+                            {validationMode && (
+                              <td className="py-3 pr-4">
+                                {trade.entryConfirmed && trade.exitConfirmed ? (
+                                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                                    TRUE
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
+                                    FALSE
+                                  </span>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan={validationMode ? 10 : 9}
+                            className="py-8 text-center text-sm text-slate-500"
+                          >
+                            No trades to display yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {activeTab === "audit" && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Validation Audit
+                    </h3>
+                    <p className="text-sm text-slate-500">
+                      Confirmation trail for signal generation and execution
+                    </p>
+                  </div>
+                  {!validationMode && (
+                    <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-500">
+                      Validation mode off
+                    </div>
+                  )}
+                </div>
+
+                {validationMode ? (
+                  auditRows.length ? (
+                    <div className="space-y-3">
+                      {auditRows.map((entry) => (
+                        <div
+                          key={entry.tradeNumber}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-900">
+                              Trade #{entry.tradeNumber}
+                            </div>
+                            <div
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                entry.confirmed
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-rose-50 text-rose-700"
+                              }`}
+                            >
+                              {entry.confirmed ? "CONFIRMED" : "NOT CONFIRMED"}
+                            </div>
+                          </div>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Entry
+                              </div>
+                              <div className="mt-1 text-sm text-slate-700">
+                                {formatDateTime(entry.entry.date)} @ {formatMoney(entry.entry.price)}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {entry.entry.reason}
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Exit
+                              </div>
+                              <div className="mt-1 text-sm text-slate-700">
+                                {formatDateTime(entry.exit.date)} @ {formatMoney(entry.exit.price)}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {entry.exit.reason}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                            <span className="rounded-full bg-white px-3 py-1 text-slate-700">
+                              PnL {formatMoney(entry.pnl)}
+                            </span>
+                            <span className="rounded-full bg-white px-3 py-1 text-slate-700">
+                              Return {formatPercent(entry.returnPct)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                      No audit entries were generated for this run.
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    Audit logging is only available when validation mode is
+                    enabled.
+                  </div>
+                )}
+              </section>
             )}
           </>
         )}
       </div>
-    </div>
+    </MainLayout>
   );
 };
 

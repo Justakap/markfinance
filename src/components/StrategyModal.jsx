@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { X, Plus } from "lucide-react";
 
 const INDICATOR_GROUPS = [
@@ -80,7 +80,7 @@ export default function StrategyModal({
   const [stopLoss, setStopLoss] = useState("");
   const [target, setTarget] = useState("");
 
-  const normalizeIndicator = (indicator) => {
+  const normalizeIndicator = useCallback((indicator) => {
     const legacyMap = {
       RSI14: "RSI (Daily)",
       "Hourly RSI": "RSI (1 Hour)",
@@ -93,9 +93,9 @@ export default function StrategyModal({
     if (ALL_SELECTABLE_INDICATORS.includes(indicator)) return indicator;
 
     return "RSI (Daily)";
-  };
+  }, []);
 
-  const normalizeConditions = (conditions = [], fallbackLogic = "AND") =>
+  const normalizeConditions = useCallback((conditions = [], fallbackLogic = "AND") =>
     conditions.map((condition, index) => ({
       ...condition,
       indicator: normalizeIndicator(condition.indicator),
@@ -105,7 +105,7 @@ export default function StrategyModal({
         index === conditions.length - 1
           ? undefined
           : condition.nextLogic || fallbackLogic,
-    }));
+    })), [normalizeIndicator]);
 
   useEffect(() => {
     if (editingStrategy) {
@@ -148,7 +148,7 @@ export default function StrategyModal({
       setStopLoss("");
       setTarget("");
     }
-  }, [editingStrategy, isOpen]);
+  }, [editingStrategy, isOpen, normalizeConditions]);
 
   if (!isOpen) return null;
 

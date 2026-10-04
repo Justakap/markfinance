@@ -3,19 +3,18 @@ import MainLayout from "../layout/MainLayout";
 import { API_URL } from "../config/api";
 
 const VALIDATION_SYMBOLS = [
-  "INFY.NS",
-  "RELIANCE.NS",
-  "TCS.NS",
-  "HDFCBANK.NS",
-  "ICICIBANK.NS",
-  "NIACL.NS",
+  "INFY",
+  "RELIANCE",
+  "TCS",
+  "HDFCBANK",
+  "ICICIBANK",
 ];
 
 const ValidationPage = () => {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [selectedSymbol, setSelectedSymbol] = useState("NIACL.NS");
+  const [selectedSymbol, setSelectedSymbol] = useState("INFY");
   const [rawData, setRawData] = useState(null);
 
   const fetchReport = async () => {
@@ -53,12 +52,17 @@ const ValidationPage = () => {
   }, [selectedSymbol]);
 
   return (
-    <MainLayout title="Validation Mode" subtitle="Developer indicator verification">
+    <MainLayout
+      title="Validation Mode"
+      subtitle="Upstox candles · Wilder RSI / EMA vs reference"
+    >
       <div className="p-6 max-w-7xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
-          <p className="text-gray-600 text-sm">
-            Compares Mark Finance values against Wilder RSI / standard EMA
-            (TradingView-compatible formulas).
+        <div className="flex items-center justify-between gap-4">
+          <p className="text-gray-600 text-sm max-w-2xl">
+            Verifies Wilder RSI(14) and EMA on <strong>completed</strong> Upstox
+            candles (in-progress bar excluded). Compare the reference column with
+            TradingView on the <strong>last closed</strong> bar for the same
+            symbol and timeframe.
           </p>
           <button
             type="button"
@@ -78,6 +82,19 @@ const ValidationPage = () => {
 
         {report && (
           <>
+            {report.dataSource && (
+              <p className="text-xs text-slate-500">
+                Data source:{" "}
+                <span className="font-medium uppercase">{report.dataSource}</span>
+                {report.generatedAt && (
+                  <span className="text-slate-400">
+                    {" "}
+                    · {new Date(report.generatedAt).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            )}
+
             <div className="grid md:grid-cols-2 gap-4">
               <div
                 className={`rounded-xl p-5 border ${
@@ -88,8 +105,8 @@ const ValidationPage = () => {
               >
                 <h3 className="font-bold text-lg">RSI Validation</h3>
                 <p className="text-sm mt-1">
-                  {report.rsi.passed}/{report.rsi.total} passed (target ≤ 1
-                  point)
+                  {report.rsi.passed}/{report.rsi.total} passed (per-TF
+                  tolerance 1.5–3 pts)
                 </p>
                 <p className="font-semibold mt-2">
                   {report.rsi.allPassed ? "PASSED" : "NEEDS REVIEW"}
@@ -121,7 +138,7 @@ const ValidationPage = () => {
                     <th className="text-left p-3">Symbol</th>
                     <th className="text-left p-3">Indicator</th>
                     <th className="text-right p-3">Mark Finance</th>
-                    <th className="text-right p-3">Reference (TV)</th>
+                    <th className="text-right p-3">Reference</th>
                     <th className="text-right p-3">Diff</th>
                     <th className="text-center p-3">Pass</th>
                   </tr>
@@ -151,7 +168,7 @@ const ValidationPage = () => {
                     <th className="text-left p-3">Symbol</th>
                     <th className="text-left p-3">Indicator</th>
                     <th className="text-right p-3">Mark Finance</th>
-                    <th className="text-right p-3">Reference (TV)</th>
+                    <th className="text-right p-3">Reference</th>
                     <th className="text-right p-3">Diff %</th>
                     <th className="text-center p-3">Pass</th>
                   </tr>

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Minus, Plus } from "lucide-react";
-import { API_URL } from "../config/api";
+import { apiFetch } from "../utils/api";
 import { showError, showSuccess } from "../utils/toast";
 
 const StockSearchDropdown = ({
@@ -11,25 +11,56 @@ const StockSearchDropdown = ({
 }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
+  const [searchError, setSearchError] = useState("");
+  const [searching, setSearching] = useState(false);
   const [addingSymbol, setAddingSymbol] = useState(null);
   const [removingSymbol, setRemovingSymbol] = useState(null);
 
   const dropdownRef = useRef(null);
+  const searchAbortRef = useRef(null);
 
-  const searchStocks = async () => {
-    if (query.length < 2) {
+  const searchStocks = useCallback(async () => {
+    if (query.trim().length < 2) {
       setResults([]);
+      setSearchError("");
       return;
     }
 
-    try {
-      const res = await fetch(`${API_URL}/api/search-stock?q=${query}`);
-      const data = await res.json();
-      setResults(data);
-    } catch (error) {
-      console.log(error);
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
     }
-  };
+
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
+    setSearching(true);
+    setSearchError("");
+
+    try {
+      const data = await apiFetch(
+        `/api/search?q=${encodeURIComponent(query.trim())}`,
+        { signal: controller.signal },
+      );
+      setResults(Array.isArray(data) ? data : []);
+    } catch (error) {
+      if (error.name === "AbortError") return;
+
+      setResults([]);
+
+      if (error.status === 429) {
+        setSearchError(
+          error.message ||
+            "Too many searches. Pause for a few seconds and try again.",
+        );
+      } else {
+        setSearchError(error.message || "Search failed");
+      }
+    } finally {
+      if (!controller.signal.aborted) {
+        setSearching(false);
+      }
+    }
+  }, [query]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -37,7 +68,13 @@ const StockSearchDropdown = ({
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [searchStocks]);
+
+  useEffect(() => {
+    return () => {
+      searchAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -61,34 +98,30 @@ const StockSearchDropdown = ({
     };
   }, []);
 
-  const isAdded = (symbol) =>
+  const isAdded = (stock) =>
     watchlistStocks?.some(
-      (stock) => stock.symbol?.toUpperCase() === symbol?.toUpperCase(),
+      (item) =>
+        item.instrumentKey === stock.instrumentKey ||
+        item.symbol?.toUpperCase() === stock.symbol?.toUpperCase(),
     );
 
   const addStock = async (stock) => {
-    setAddingSymbol(stock.symbol);
+    setAddingSymbol(stock.instrumentKey || stock.symbol);
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/watchlists/${selectedWatchlist}/stocks`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            symbol: stock.symbol,
-            name: stock.name,
-            exchange: stock.exchange,
-            market: stock.market,
-            assetType: stock.assetType,
-          }),
-        },
-      );
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Failed to add stock");
-      }
+      await apiFetch(`/api/watchlists/${selectedWatchlist}/stocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: stock.symbol,
+          name: stock.name,
+          instrumentKey: stock.instrumentKey,
+          exchange: stock.exchange,
+          instrumentType: stock.instrumentType || stock.type,
+          market: stock.exchange,
+          assetType: stock.instrumentType || stock.type,
+        }),
+      });
 
       await refreshWatchlist();
       showSuccess(`${stock.symbol} added to watchlist`);
@@ -101,19 +134,14 @@ const StockSearchDropdown = ({
   };
 
   const removeStock = async (stock) => {
-    setRemovingSymbol(stock.symbol);
-    onRemoveStock?.(stock.symbol);
+    setRemovingSymbol(stock.instrumentKey || stock.symbol);
+    onRemoveStock?.(stock.instrumentKey || stock.symbol);
 
     try {
-      const res = await fetch(
-        `${API_URL}/api/watchlists/${selectedWatchlist}/stocks/${encodeURIComponent(stock.symbol)}`,
+      await apiFetch(
+        `/api/watchlists/${selectedWatchlist}/stocks/${encodeURIComponent(stock.instrumentKey || stock.symbol)}`,
         { method: "DELETE" },
       );
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Failed to remove stock");
-      }
     } catch (error) {
       console.log(error);
       showError(error.message || "Failed to remove stock");
@@ -121,6 +149,18 @@ const StockSearchDropdown = ({
     } finally {
       setRemovingSymbol(null);
     }
+  };
+
+  const getTypeBadge = (type = "") => {
+    const value = type.toUpperCase();
+
+    if (value === "EQ") return "EQ";
+    if (value === "INDEX") return "IDX";
+    if (value.includes("FUT")) return "FUT";
+    if (value.includes("OPT")) return "OPT";
+    if (value === "ETF") return "ETF";
+    if (value.includes("COM")) return "COM";
+    return value || "INST";
   };
 
   const getMarketColor = (market) => {
@@ -145,22 +185,34 @@ const StockSearchDropdown = ({
     <div ref={dropdownRef} className="relative w-96">
       <input
         type="text"
-        placeholder="Search Stocks, Crypto, ETF..."
+        placeholder="Search stocks, futures, options, commodities..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         className="w-full border border-gray-300 px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
       />
 
+      {searching && query.trim().length >= 2 && (
+        <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+          <Loader2 size={12} className="animate-spin" />
+          Searching…
+        </p>
+      )}
+
+      {searchError && (
+        <p className="text-xs text-red-600 mt-1">{searchError}</p>
+      )}
+
       {results.length > 0 && (
         <div className="absolute top-full mt-2 w-full bg-white border border-gray-200 rounded-lg shadow-xl z-40 max-h-96 overflow-y-auto">
           {results.map((stock, index) => {
-            const added = isAdded(stock.symbol);
-            const isAdding = addingSymbol === stock.symbol;
-            const isRemoving = removingSymbol === stock.symbol;
+            const rowKey = stock.instrumentKey || `${stock.symbol}-${index}`;
+            const added = isAdded(stock);
+            const isAdding = addingSymbol === rowKey;
+            const isRemoving = removingSymbol === rowKey;
 
             return (
               <div
-                key={`${stock.symbol}-${index}`}
+                key={rowKey}
                 className={`flex justify-between items-center px-4 py-3 border-b border-gray-100 hover:bg-gray-50 ${added ? "bg-blue-50/40" : ""}`}
               >
                 <div className="flex-1 min-w-0">
@@ -168,12 +220,12 @@ const StockSearchDropdown = ({
                   <p className="text-sm text-gray-600 truncate">{stock.name}</p>
                   <div className="flex gap-2 mt-2 flex-wrap">
                     <span
-                      className={`text-[10px] px-2 py-1 rounded-full font-medium ${getMarketColor(stock.market)}`}
+                      className={`text-[10px] px-2 py-1 rounded-full font-medium ${getMarketColor(stock.exchange)}`}
                     >
-                      {stock.market}
+                      {stock.exchange}
                     </span>
                     <span className="text-[10px] px-2 py-1 rounded-full bg-gray-100 text-gray-700 font-medium">
-                      {stock.assetType}
+                      {getTypeBadge(stock.instrumentType || stock.type)}
                     </span>
                     {added && (
                       <span className="text-[10px] px-2 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">

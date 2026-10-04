@@ -75,7 +75,7 @@ const MainLayout = ({
               <div className="flex items-center gap-4">
                 {showLive && (
                   <>
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400">
+                    <p className="text-[11px] md:text-sm font-medium text-black whitespace-nowrap">
                       Last Updated {getTimeAgo()}
                     </p>
 

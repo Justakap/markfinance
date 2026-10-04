@@ -1,35 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import MainLayout from "../layout/MainLayout";
 import WatchlistSelector from "../components/WatchlistSelector";
-import StockTable from "../components/StockTable";
+import GreekTable from "../components/GreekTable";
 import { apiFetch } from "../utils/api";
 import { onMarketTick } from "../utils/socket";
-import { normalizeIndicatorQuote } from "../utils/indicators";
 
-const RSI_FIELDS = [
-  "ema20",
-  "ema75",
-  "volAvg",
-  "pe",
+const GREEK_FIELDS = [
+  "delta",
+  "gamma",
+  "theta",
+  "vega",
+  "iv",
+  "oi",
+  "oiChange",
   "rsi",
-  "prevRsi",
-  "rsiChange",
-  "rsi5m",
-  "prevRsi5m",
-  "rsi5mChange",
-  "rsi15m",
-  "prevRsi15m",
-  "rsi15mChange",
-  "hourlyRsi",
-  "prevHourlyRsi",
-  "hourlyRsiChange",
-  "prevPrice5m",
-  "prevPrice15m",
-  "prevPrice1h",
-  "prevPrice",
+  "vwap",
 ];
 
-const mergeMarketTick = (rows, tick) => {
+const mergeGreekTick = (rows, tick) => {
   if (!tick?.instrumentKey && !tick?.symbol) return rows;
 
   let changed = false;
@@ -40,13 +28,13 @@ const mergeMarketTick = (rows, tick) => {
 
     if (!sameInstrument && !sameSymbol) return row;
 
-    const normalizedTick = normalizeIndicatorQuote(tick);
     const merged = { ...row };
-    const ltp = tick.ltp ?? tick.price;
+    const premium = tick.ltp ?? tick.price;
 
-    if (ltp != null && Number(ltp) > 0) {
-      merged.ltp = Number(ltp);
-      merged.price = Number(ltp);
+    if (premium != null && Number(premium) > 0) {
+      merged.ltp = Number(premium);
+      merged.price = Number(premium);
+      merged.optionPremium = Number(premium);
       if (tick.changeAmount != null) merged.changeAmount = tick.changeAmount;
       if (tick.changePercent != null) {
         merged.changePercent = tick.changePercent;
@@ -58,8 +46,8 @@ const mergeMarketTick = (rows, tick) => {
       merged.volume = tick.volume;
     }
 
-    RSI_FIELDS.forEach((field) => {
-      if (normalizedTick[field] != null) merged[field] = normalizedTick[field];
+    GREEK_FIELDS.forEach((field) => {
+      if (tick[field] != null) merged[field] = tick[field];
     });
 
     changed = true;
@@ -69,7 +57,7 @@ const mergeMarketTick = (rows, tick) => {
   return changed ? next : rows;
 };
 
-const StockAnalysis = () => {
+const GreekPage = () => {
   const [selectedWatchlist, setSelectedWatchlist] = useState(() => {
     return localStorage.getItem("selectedWatchlist") || "";
   });
@@ -82,16 +70,6 @@ const StockAnalysis = () => {
   const [marketStatus, setMarketStatus] = useState(null);
   const watchlistRef = useRef(selectedWatchlist);
   const fetchInProgressRef = useRef(false);
-
-  const [rsiTimeframe, setRsiTimeframe] = useState(() => {
-    const saved = localStorage.getItem("rsiTimeframe");
-    if (!saved || saved === "1m") return "1d";
-    return saved;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("rsiTimeframe", rsiTimeframe);
-  }, [rsiTimeframe]);
 
   useEffect(() => {
     if (selectedWatchlist) {
@@ -139,7 +117,7 @@ const StockAnalysis = () => {
         setMarketStatus(res.marketStatus || null);
       }
 
-      setMarketData(data.map((quote) => normalizeIndicatorQuote(quote)));
+      setMarketData(data);
       setLastUpdated(res.updatedAt ? new Date(res.updatedAt) : new Date());
     } catch (error) {
       console.log(error);
@@ -168,30 +146,27 @@ const StockAnalysis = () => {
     }
   }, [selectedWatchlist]);
 
-  const removeStocksLocally = useCallback(
-    (symbols) => {
-      const symbolSet = new Set(
-        (Array.isArray(symbols) ? symbols : [symbols]).map(String),
-      );
+  const removeStocksLocally = useCallback((symbols) => {
+    const symbolSet = new Set(
+      (Array.isArray(symbols) ? symbols : [symbols]).map(String),
+    );
 
-      setWatchlist((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          stocks: prev.stocks.filter(
-            (s) => !symbolSet.has(s.instrumentKey) && !symbolSet.has(s.symbol),
-          ),
-        };
-      });
-
-      setMarketData((prev) =>
-        prev.filter(
-          (q) => !symbolSet.has(q.instrumentKey) && !symbolSet.has(q.symbol),
+    setWatchlist((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        stocks: prev.stocks.filter(
+          (s) => !symbolSet.has(s.instrumentKey) && !symbolSet.has(s.symbol),
         ),
-      );
-    },
-    [],
-  );
+      };
+    });
+
+    setMarketData((prev) =>
+      prev.filter(
+        (q) => !symbolSet.has(q.instrumentKey) && !symbolSet.has(q.symbol),
+      ),
+    );
+  }, []);
 
   const refreshWatchlist = useCallback(async () => {
     await fetchWatchlist();
@@ -212,7 +187,7 @@ const StockAnalysis = () => {
     const unsubscribe = onMarketTick((tick) => {
       if (!watchlistRef.current) return;
 
-      setMarketData((prev) => mergeMarketTick(prev, tick));
+      setMarketData((prev) => mergeGreekTick(prev, tick));
       setLastUpdated(new Date());
     });
 
@@ -221,13 +196,20 @@ const StockAnalysis = () => {
     };
   }, []);
 
+  const handleRemoveStock = useCallback(
+    (symbols) => {
+      removeStocksLocally(Array.isArray(symbols) ? symbols : [symbols]);
+    },
+    [removeStocksLocally],
+  );
+
   return (
     <MainLayout
-      title="Stock Analysis"
+      title="Greek"
       subtitle={
         marketStatus?.label
           ? `Real-time · ${marketStatus.label}`
-          : "Real Time Market Analysis"
+          : "Real Time Greek Analysis"
       }
       lastUpdated={lastUpdated}
       showLive
@@ -238,14 +220,12 @@ const StockAnalysis = () => {
           setSelectedWatchlist={setSelectedWatchlist}
         />
 
-        <StockTable
+        <GreekTable
           selectedWatchlist={selectedWatchlist}
           watchlist={watchlist}
           marketData={marketData}
-          rsiTimeframe={rsiTimeframe}
-          setRsiTimeframe={setRsiTimeframe}
           refreshWatchlist={refreshWatchlist}
-          onRemoveStocks={removeStocksLocally}
+          onRemoveStock={handleRemoveStock}
           loadingMarket={loadingMarket}
           marketError={marketError}
         />
@@ -254,4 +234,4 @@ const StockAnalysis = () => {
   );
 };
 
-export default StockAnalysis;
+export default GreekPage;

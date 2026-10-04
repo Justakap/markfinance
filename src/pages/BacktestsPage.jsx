@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { Trash2, Eye } from "lucide-react";
@@ -12,7 +12,7 @@ const BacktestsPage = () => {
   const [loading, setLoading] = useState(true);
   const [compareIds, setCompareIds] = useState([]);
 
-  const fetchBacktests = async () => {
+  const fetchBacktests = useCallback(async () => {
     try {
       const res = await axios.get(`${API_URL}/api/backtests/${user.mongoId}`);
       setBacktests(res.data);
@@ -21,11 +21,11 @@ const BacktestsPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user.mongoId]);
 
   useEffect(() => {
     fetchBacktests();
-  }, []);
+  }, [fetchBacktests]);
 
   const deleteBacktest = async (id) => {
     const confirmed = await confirmAction({

@@ -51,7 +51,9 @@ export function formatPrice(price, currency = "INR") {
 }
 
 export function formatPriceFromQuote(quote, stock = {}) {
-  if (quote?.price == null) return "--";
+  const price = quote?.price ?? quote?.ltp;
+
+  if (price == null || Number(price) <= 0) return "--";
 
   const currency = inferCurrency(
     quote.symbol || stock.symbol,
@@ -59,7 +61,7 @@ export function formatPriceFromQuote(quote, stock = {}) {
     quote.currency,
   );
 
-  return formatPrice(quote.price, currency);
+  return formatPrice(price, currency);
 }
 
 function getChangeCurrency(quote, stock = {}) {

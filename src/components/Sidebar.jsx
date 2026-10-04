@@ -1,6 +1,9 @@
 import {
   LayoutDashboard,
   LineChart,
+  Sigma,
+  CandlestickChart,
+  BarChart3,
   Settings,
   Menu,
   ChevronLeft,
@@ -21,14 +24,19 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
       path: "/analysis",
     },
     {
+      title: "Greek",
+      icon: Sigma,
+      path: "/greek",
+    },
+    {
       title: "Strategies",
       path: "/strategies",
-      icon: LayoutDashboard,
+      icon: CandlestickChart,
     },
     {
       title: "Backtests",
       path: "/backtests",
-      icon: LineChart,
+      icon: BarChart3,
     },
   ];
 

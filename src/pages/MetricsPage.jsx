@@ -37,7 +37,7 @@ export default function MetricsPage() {
   return (
     <MainLayout
       title="Performance Metrics"
-      subtitle="Yahoo usage, cache efficiency, and latency"
+      subtitle="Upstox feeds, scan/backtest latency, and socket activity"
     >
       <div className="p-6 md:p-8 bg-slate-50 min-h-screen">
         {error && (
@@ -51,22 +51,19 @@ export default function MetricsPage() {
         ) : (
           <>
             <div className="mb-4 text-sm text-slate-600">
-              Market:{" "}
-              <span className="font-medium">
-                {metrics.marketStatus?.label || "Unknown"}
-              </span>
+              Data source:{" "}
+              <span className="font-medium">{metrics.dataSource || "upstox"}</span>
               {" · "}
-              Cache entries: {metrics.cacheSize ?? 0}
+              Subscribed instruments: {metrics.subscribedInstruments ?? 0}
               {" · "}
               Uptime: {Math.floor((metrics.uptimeSeconds || 0) / 60)} min
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <MetricCard
-                label="Yahoo Requests"
-                value={metrics.yahooRequests ?? 0}
+                label="Cache Hits"
+                value={metrics.cacheHits ?? 0}
               />
-              <MetricCard label="Cache Hits" value={metrics.cacheHits ?? 0} />
               <MetricCard label="Cache Misses" value={metrics.cacheMisses ?? 0} />
               <MetricCard
                 label="Engine Refreshes"
@@ -87,6 +84,11 @@ export default function MetricsPage() {
               <MetricCard
                 label="Avg Backtest Time"
                 value={`${metrics.avgBacktestTimeMs ?? 0} ms`}
+              />
+              <MetricCard
+                label="Upstox API Calls"
+                value={metrics.upstoxApiCalls ?? metrics.yahooRequests ?? 0}
+                hint="Queued REST requests"
               />
             </div>
           </>

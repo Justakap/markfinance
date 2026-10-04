@@ -2,10 +2,14 @@ import { io } from "socket.io-client";
 import { API_URL } from "../config/api";
 
 let socket = null;
-let updateBatch = [];
 let updateTimer = null;
-const UPDATE_BATCH_INTERVAL = 2000; // 2 seconds - update every 2 seconds when market is open
-const MAX_BATCH_SIZE = 100; // Max updates to batch before sending
+
+export function resumeMarketSocket() {
+  const marketSocket = getMarketSocket();
+  if (!marketSocket.connected) {
+    marketSocket.connect();
+  }
+}
 
 export function getMarketSocket() {
   if (!socket) {
@@ -15,7 +19,7 @@ export function getMarketSocket() {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       upgradeDuration: 10000,
       path: "/socket.io/",
     });
@@ -45,36 +49,11 @@ export function disconnectMarketSocket() {
   }
 }
 
-// Internal batching functions
-function scheduleBatchFlush() {
-  if (updateTimer) return;
-  updateTimer = setTimeout(() => {
-    flushUpdateBatch();
-  }, UPDATE_BATCH_INTERVAL);
-}
-
-function flushUpdateBatch() {
-  if (updateBatch.length === 0) {
-    updateTimer = null;
-    return;
-  }
-
-  const batch = [...updateBatch];
-  updateBatch = [];
-  updateTimer = null;
-
-  const marketSocket = socket;
-  if (marketSocket) {
-    marketSocket.emit("batchedStockUpdates", batch);
-  }
-}
-
 function clearUpdateBatch() {
   if (updateTimer) {
     clearTimeout(updateTimer);
     updateTimer = null;
   }
-  updateBatch = [];
 }
 
 // Public API for batched updates
@@ -91,6 +70,16 @@ export function onBatchedStockUpdates(callback) {
 
   return () => {
     marketSocket.off("batchedStockUpdates", wrappedCallback);
+  };
+}
+
+export function onMarketTick(callback) {
+  const marketSocket = getMarketSocket();
+
+  marketSocket.on("marketTick", callback);
+
+  return () => {
+    marketSocket.off("marketTick", callback);
   };
 }
 

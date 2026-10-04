@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import StockModal from "./StockModal";
 import StockSearchDropdown from "./StockSearchDropdown";
+import TableExportMenu from "./TableExportMenu";
 import StockTableRow from "./StockTableRow";
-import { findQuoteForSymbol } from "../utils/symbols";
 import { apiFetch } from "../utils/api";
+import {
+  getRsiDataForTimeframe,
+  normalizeIndicatorQuote,
+} from "../utils/indicators";
 import { confirmAction, showError, showSuccess } from "../utils/toast";
 
 const RSI_TIMEFRAMES = [
-  { value: "1m", label: "1 Min" },
   { value: "5m", label: "5 Min" },
   { value: "15m", label: "15 Min" },
   { value: "1h", label: "1 Hour" },
@@ -19,39 +22,73 @@ const ROW_HEIGHT = 56;
 const VIRTUAL_THRESHOLD = 20;
 const VIEWPORT_HEIGHT = 520;
 
-const getRsiData = (quote, rsiTimeframe) => {
-  switch (rsiTimeframe) {
-    case "1m":
-      return {
-        rsi: quote?.rsi1m,
-        prev: quote?.prevRsi1m,
-        change: quote?.rsi1mChange,
-      };
-    case "5m":
-      return {
-        rsi: quote?.rsi5m,
-        prev: quote?.prevRsi5m,
-        change: quote?.rsi5mChange,
-      };
-    case "15m":
-      return {
-        rsi: quote?.rsi15m,
-        prev: quote?.prevRsi15m,
-        change: quote?.rsi15mChange,
-      };
-    case "1h":
-      return {
-        rsi: quote?.hourlyRsi,
-        prev: quote?.prevHourlyRsi,
-        change: quote?.hourlyRsiChange,
-      };
-    default:
-      return {
-        rsi: quote?.rsi,
-        prev: quote?.prevRsi,
-        change: quote?.rsiChange,
-      };
-  }
+const getRsiData = (quote, rsiTimeframe) =>
+  getRsiDataForTimeframe(quote, rsiTimeframe);
+
+const getVelocityValue = (quote) => {
+  const normalized = normalizeIndicatorQuote(quote);
+  const pairs = [
+    [normalized?.rsi5m, normalized?.prevRsi5m],
+    [normalized?.rsi15m, normalized?.prevRsi15m],
+    [normalized?.hourlyRsi, normalized?.prevHourlyRsi],
+    [normalized?.rsi, normalized?.prevRsi],
+  ];
+
+  const allValid = pairs.every(
+    ([current, prev]) =>
+      Number.isFinite(Number(current)) && Number.isFinite(Number(prev)),
+  );
+
+  if (!allValid) return 0;
+
+  const allAbove = pairs.every(
+    ([current, prev]) => Number(current) > Number(prev),
+  );
+  const allBelow = pairs.every(
+    ([current, prev]) => Number(current) < Number(prev),
+  );
+
+  if (allAbove) return 1;
+  if (allBelow) return -1;
+  return 0;
+};
+
+const getPriceVelocityValue = (quote) => {
+  const normalized = normalizeIndicatorQuote(quote);
+  const current = Number(normalized?.price ?? normalized?.ltp);
+  const pairs = [
+    [current, normalized?.prevPrice5m],
+    [current, normalized?.prevPrice15m],
+    [current, normalized?.prevPrice1h],
+    [current, normalized?.prevPrice],
+  ];
+
+  const allValid = pairs.every(
+    ([price, prev]) =>
+      Number.isFinite(Number(price)) && Number.isFinite(Number(prev)),
+  );
+
+  if (!allValid) return 0;
+
+  const allAbove = pairs.every(([price, prev]) => Number(price) > Number(prev));
+  const allBelow = pairs.every(([price, prev]) => Number(price) < Number(prev));
+
+  if (allAbove) return 1;
+  if (allBelow) return -1;
+  return 0;
+};
+
+const formatTrendLabel = (value) => {
+  if (value > 0) return "+ve";
+  if (value < 0) return "-ve";
+  return "-";
+};
+
+const getDmaStatusValue = (quote) => {
+  const price = Number(quote?.price ?? quote?.ltp);
+  const ema20 = Number(quote?.ema20);
+  if (!Number.isFinite(price) || !Number.isFinite(ema20)) return 0;
+  return price > ema20 ? 1 : -1;
 };
 
 const StockTable = ({
@@ -67,72 +104,39 @@ const StockTable = ({
   marketError = "",
 }) => {
   const [showAnalysis, setShowAnalysis] = useState(false);
-  const [showCategoryFilter, setShowCategoryFilter] = useState(false);
-  const categoryRef = useRef(null);
   const [sortField, setSortField] = useState("symbol");
   const [sortDirection, setSortDirection] = useState("asc");
-  const [selectedCategories, setSelectedCategories] = useState([]);
   const [scrollTop, setScrollTop] = useState(0);
   const scrollRef = useRef(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState(new Set());
   const [deleting, setDeleting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (categoryRef.current && !categoryRef.current.contains(event.target)) {
-        setShowCategoryFilter(false);
-      }
-    };
+  const allStocks = useMemo(() => watchlist?.stocks || [], [watchlist?.stocks]);
 
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const allStocks = watchlist?.stocks || [];
-
-  // Memoize categories to prevent recalculation
-  const categories = useMemo(
-    () => [...new Set(allStocks.map((stock) => stock.sector).filter(Boolean))],
-    [allStocks],
-  );
-
-  const toggleCategory = (category) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category)
-        ? prev.filter((item) => item !== category)
-        : [...prev, category],
-    );
-  };
-
-  // CRITICAL OPTIMIZATION: Create Map for O(1) quote lookups
-  // This fixes the O(n²) complexity in sorting (was: findQuoteForSymbol in each comparison)
   const quoteMap = useMemo(() => {
     const map = new Map();
     marketData.forEach((quote) => {
-      map.set(normalizeSymbol(quote.symbol), quote);
-      map.set(quote.symbol, quote);
+      if (quote.instrumentKey) map.set(quote.instrumentKey, quote);
+      if (quote.symbol) map.set(quote.symbol, quote);
     });
     return map;
   }, [marketData]);
 
   const getQuote = useCallback(
-    (symbol) => quoteMap.get(normalizeSymbol(symbol)) || quoteMap.get(symbol) || null,
+    (stock) =>
+      quoteMap.get(stock.instrumentKey) || quoteMap.get(stock.symbol) || null,
     [quoteMap],
   );
 
   const stocks = useMemo(() => {
-    let list =
-      selectedCategories.length === 0
-        ? [...allStocks]
-        : allStocks.filter((stock) =>
-            selectedCategories.includes(stock.sector),
-          );
+    const list = [...allStocks];
 
     list.sort((a, b) => {
       // Now using Map lookups - O(1) instead of O(n) per comparison!
-      const quoteA = getQuote(a.symbol);
-      const quoteB = getQuote(b.symbol);
+      const quoteA = getQuote(a);
+      const quoteB = getQuote(b);
       const rsiA = getRsiData(quoteA, rsiTimeframe);
       const rsiB = getRsiData(quoteB, rsiTimeframe);
 
@@ -145,12 +149,12 @@ const StockTable = ({
           valueB = b.symbol;
           break;
         case "company":
-          valueA = a.name;
-          valueB = b.name;
+          valueA = a.name || "";
+          valueB = b.name || "";
           break;
         case "rate":
-          valueA = quoteA?.price || 0;
-          valueB = quoteB?.price || 0;
+          valueA = quoteA?.price ?? quoteA?.ltp ?? 0;
+          valueB = quoteB?.price ?? quoteB?.ltp ?? 0;
           break;
         case "change":
           valueA = quoteA?.change || 0;
@@ -164,6 +168,28 @@ const StockTable = ({
           valueA = quoteA?.ema20 || 0;
           valueB = quoteB?.ema20 || 0;
           break;
+        case "ema75":
+          valueA = quoteA?.ema75 || 0;
+          valueB = quoteB?.ema75 || 0;
+          break;
+        case "volAvg":
+          valueA = quoteA?.volAvg || 0;
+          valueB = quoteB?.volAvg || 0;
+          break;
+        case "acc":
+          valueA =
+            quoteA?.volume && quoteA?.volAvg
+              ? Number(quoteA.volume) / Number(quoteA.volAvg)
+              : 0;
+          valueB =
+            quoteB?.volume && quoteB?.volAvg
+              ? Number(quoteB.volume) / Number(quoteB.volAvg)
+              : 0;
+          break;
+        case "dmaStatus":
+          valueA = getDmaStatusValue(quoteA);
+          valueB = getDmaStatusValue(quoteB);
+          break;
         case "rsi":
           valueA = rsiA?.rsi || 0;
           valueB = rsiB?.rsi || 0;
@@ -175,6 +201,14 @@ const StockTable = ({
         case "rsiChange":
           valueA = rsiA?.change || 0;
           valueB = rsiB?.change || 0;
+          break;
+        case "vel":
+          valueA = getVelocityValue(quoteA);
+          valueB = getVelocityValue(quoteB);
+          break;
+        case "priceVel":
+          valueA = getPriceVelocityValue(quoteA);
+          valueB = getPriceVelocityValue(quoteB);
           break;
         case "pe":
           valueA = quoteA?.pe || 0;
@@ -195,14 +229,7 @@ const StockTable = ({
     });
 
     return list;
-  }, [
-    allStocks,
-    selectedCategories,
-    marketData,
-    sortField,
-    sortDirection,
-    rsiTimeframe,
-  ]);
+  }, [allStocks, getQuote, sortField, sortDirection, rsiTimeframe]);
 
   const getSortIcon = (field) => {
     if (sortField !== field) return "↕";
@@ -232,18 +259,84 @@ const StockTable = ({
     ? Math.max(0, (stocks.length - endIndex) * ROW_HEIGHT)
     : 0;
 
+  const exportRows = useMemo(
+    () =>
+      stocks.map((stock) => {
+        const quote = getQuote(stock);
+        const rsiData = getRsiData(quote, rsiTimeframe);
+        const price = Number(quote?.price ?? quote?.ltp);
+        const ema20 = Number(quote?.ema20);
+
+        return {
+          symbol: stock.symbol,
+          company: stock.name || "",
+          ltp: Number.isFinite(price) ? price.toFixed(2) : "--",
+          changePercent:
+            quote?.changePercent != null || quote?.change != null
+              ? `${Number(quote?.changePercent ?? quote?.change).toFixed(2)}%`
+              : "--",
+          volume: quote?.volume != null ? Number(quote.volume).toLocaleString("en-IN") : "--",
+          volAvg: quote?.volAvg != null ? Number(quote.volAvg).toLocaleString("en-IN") : "--",
+          vf:
+            Number.isFinite(Number(quote?.volume)) &&
+            Number.isFinite(Number(quote?.volAvg)) &&
+            Number(quote.volAvg) > 0
+              ? (Number(quote.volume) / Number(quote.volAvg)).toFixed(2)
+              : "--",
+          ema20: Number.isFinite(ema20) ? ema20.toFixed(2) : "--",
+          ema75: quote?.ema75 != null ? Number(quote.ema75).toFixed(2) : "--",
+          dmaStatus:
+            Number.isFinite(price) && Number.isFinite(ema20)
+              ? price > ema20
+                ? "Above"
+                : "Below"
+              : "--",
+          rsi: rsiData.rsi != null ? Number(rsiData.rsi).toFixed(2) : "--",
+          prevRsi: rsiData.prev != null ? Number(rsiData.prev).toFixed(2) : "--",
+          rsiChange:
+            rsiData.change != null ? Number(rsiData.change).toFixed(2) : "--",
+          vel: formatTrendLabel(getVelocityValue(quote)),
+          priceVel: formatTrendLabel(getPriceVelocityValue(quote)),
+          pe: quote?.pe != null ? Number(quote.pe).toFixed(2) : "--",
+        };
+      }),
+    [getQuote, rsiTimeframe, stocks],
+  );
+
+  const exportColumns = useMemo(
+    () => [
+      { label: "Symbol", value: "symbol" },
+      { label: "Company", value: "company" },
+      { label: "LTP", value: "ltp" },
+      { label: "Change %", value: "changePercent" },
+      { label: "Volume", value: "volume" },
+      { label: "Vol Avg", value: "volAvg" },
+      { label: "VF", value: "vf" },
+      { label: "20 EMA", value: "ema20" },
+      { label: "75 EMA", value: "ema75" },
+      { label: "20 DMA", value: "dmaStatus" },
+      { label: "RSI", value: "rsi" },
+      { label: "Prev RSI", value: "prevRsi" },
+      { label: "RSI Chng", value: "rsiChange" },
+      { label: "Vel", value: "vel" },
+      { label: "Price Vel", value: "priceVel" },
+      { label: "PE", value: "pe" },
+    ],
+    [],
+  );
+
   const handleScroll = (event) => {
     setScrollTop(event.currentTarget.scrollTop);
   };
 
-  const toggleSelect = (symbol) => {
+  const toggleSelect = (stockId) => {
     setSelectionMode(true);
     setSelectedSymbols((prev) => {
       const next = new Set(prev);
-      if (next.has(symbol)) {
-        next.delete(symbol);
+      if (next.has(stockId)) {
+        next.delete(stockId);
       } else {
-        next.add(symbol);
+        next.add(stockId);
       }
       if (next.size === 0) {
         setSelectionMode(false);
@@ -260,7 +353,7 @@ const StockTable = ({
     }
 
     setSelectionMode(true);
-    setSelectedSymbols(new Set(stocks.map((s) => s.symbol)));
+    setSelectedSymbols(new Set(stocks.map((s) => s.instrumentKey || s.symbol)));
   };
 
   const clearSelection = () => {
@@ -317,12 +410,22 @@ const StockTable = ({
     onRemoveStocks?.([symbol]);
   };
 
+  const handleManualRefresh = async () => {
+    if (!refreshWatchlist || refreshing) return;
+    setRefreshing(true);
+    try {
+      await refreshWatchlist();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     setSelectedSymbols(new Set());
     setSelectionMode(false);
   }, [selectedWatchlist]);
 
-  const colSpan = selectionMode ? 11 : 10;
+  const colSpan = selectionMode ? 16 : 15;
 
   if (!selectedWatchlist || !watchlist) {
     return (
@@ -378,40 +481,6 @@ const StockTable = ({
                   </button>
                 </>
               )}
-              <div ref={categoryRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowCategoryFilter(!showCategoryFilter)}
-                  className="border border-gray-300 px-4 py-2 rounded-lg bg-white text-sm"
-                >
-                  Categories
-                  {selectedCategories.length > 0 &&
-                    ` (${selectedCategories.length})`}{" "}
-                  ▼
-                </button>
-                {showCategoryFilter && (
-                  <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-xl z-50 p-3 max-h-80 overflow-y-auto">
-                    {categories.length > 0 ? (
-                      categories.map((category) => (
-                        <label
-                          key={category}
-                          className="flex items-center gap-2 py-1 cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedCategories.includes(category)}
-                            onChange={() => toggleCategory(category)}
-                          />
-                          <span className="text-sm">{category}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <p className="text-sm text-gray-500">No categories</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
               <select
                 value={rsiTimeframe}
                 onChange={(e) => setRsiTimeframe(e.target.value)}
@@ -423,7 +492,23 @@ const StockTable = ({
                   </option>
                 ))}
               </select>
-
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={refreshing || loadingMarket}
+                className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                {refreshing ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : null}
+                Refresh
+              </button>
+              <TableExportMenu
+                rows={exportRows}
+                columns={exportColumns}
+                filePrefix="Report"
+                disabled={refreshing || loadingMarket || exportRows.length === 0}
+              />
               <button
                 type="button"
                 onClick={() => setShowAnalysis(true)}
@@ -442,7 +527,7 @@ const StockTable = ({
 
           {loadingMarket && (
             <div className="mx-4 mt-3 rounded-lg bg-blue-50 border border-blue-200 px-4 py-2 text-sm text-blue-700">
-              Loading market data from cache…
+              Loading live prices… indicators stream in via WebSocket
             </div>
           )}
 
@@ -480,14 +565,19 @@ const StockTable = ({
                   )}
                   {[
                     ["symbol", "Symbol"],
-                    ["company", "Company"],
-                    ["rate", "Rate"],
-                    ["change", "Change"],
+                    ["rate", "LTP"],
+                    ["change", "Change %"],
                     ["volume", "Volume"],
-                    ["ema", "20 D EMA"],
+                    ["volAvg", "Vol Avg"],
+                    ["acc", "VF"],
+                    ["ema", "20 EMA"],
+                    ["ema75", "75 EMA"],
+                    ["dmaStatus", "20 DMA"],
                     ["rsi", "RSI"],
                     ["prevRsi", "Prev RSI"],
-                    ["rsiChange", "Chng RSI"],
+                    ["rsiChange", "RSI Chng"],
+                    ["vel", "Vel"],
+                    ["priceVel", "Price Vel"],
                     ["pe", "PE"],
                   ].map(([field, label]) => (
                     <th
@@ -511,17 +601,17 @@ const StockTable = ({
                 )}
                 {stocks.length > 0 ? (
                   visibleStocks.map((stock) => {
-                    const quote = getQuote(stock.symbol);
+                    const quote = getQuote(stock);
                     const rsiData = getRsiData(quote, rsiTimeframe);
 
                     return (
                       <StockTableRow
-                        key={stock._id || stock.symbol}
+                        key={stock.instrumentKey || stock._id || stock.symbol}
                         stock={stock}
                         quote={quote}
                         rsiData={rsiData}
                         selectionMode={selectionMode}
-                        isSelected={selectedSymbols.has(stock.symbol)}
+                        isSelected={selectedSymbols.has(stock.instrumentKey || stock.symbol)}
                         onToggleSelect={toggleSelect}
                       />
                     );
