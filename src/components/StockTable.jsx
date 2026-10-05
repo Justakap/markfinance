@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import StockModal from "./StockModal";
 import StockSearchDropdown from "./StockSearchDropdown";
-import TableExportMenu from "./TableExportMenu";
 import StockTableRow from "./StockTableRow";
 import { apiFetch } from "../utils/api";
 import {
@@ -11,6 +10,10 @@ import {
   toFiniteNumber,
 } from "../utils/indicators";
 import { confirmAction, showError, showSuccess } from "../utils/toast";
+
+// xlsx/jsPDF are large and only needed once the export menu is actually used —
+// split them into their own chunk instead of loading them with the table.
+const TableExportMenu = lazy(() => import("./TableExportMenu"));
 
 const RSI_TIMEFRAMES = [
   { value: "5m", label: "5 Min" },
@@ -506,12 +509,24 @@ const StockTable = ({
                 ) : null}
                 Refresh
               </button>
-              <TableExportMenu
-                rows={exportRows}
-                columns={exportColumns}
-                filePrefix="Report"
-                disabled={refreshing || loadingMarket || exportRows.length === 0}
-              />
+              <Suspense
+                fallback={
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 opacity-60"
+                  >
+                    Export
+                  </button>
+                }
+              >
+                <TableExportMenu
+                  rows={exportRows}
+                  columns={exportColumns}
+                  filePrefix="Report"
+                  disabled={refreshing || loadingMarket || exportRows.length === 0}
+                />
+              </Suspense>
               <button
                 type="button"
                 onClick={() => setShowAnalysis(true)}

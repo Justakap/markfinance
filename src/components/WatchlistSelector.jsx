@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { apiFetch } from "../utils/api";
 import {
@@ -7,8 +7,12 @@ import {
   showSuccess,
 } from "../utils/toast";
 
-const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
-  const [watchlists, setWatchlists] = useState([]);
+const WatchlistSelector = ({
+  selectedWatchlist,
+  setSelectedWatchlist,
+  watchlists,
+  onWatchlistsChange,
+}) => {
   const [showModal, setShowModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newWatchlist, setNewWatchlist] = useState("");
@@ -16,37 +20,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
   const [loading, setLoading] = useState(false);
 
   const user = JSON.parse(localStorage.getItem("user"));
-  const userId = user?.uid;
   const mongoId = user?.mongoId;
-
-  const fetchWatchlists = useCallback(async () => {
-    try {
-      if (!userId) return;
-
-      const data = await apiFetch(`/api/watchlists?userId=${mongoId}`);
-
-      setWatchlists(Array.isArray(data) ? data : []);
-
-      const savedWatchlist = localStorage.getItem("selectedWatchlist");
-
-      if (
-        savedWatchlist &&
-        data.some((watchlist) => watchlist._id === savedWatchlist)
-      ) {
-        setSelectedWatchlist(savedWatchlist);
-      } else if (data.length > 0) {
-        setSelectedWatchlist(data[0]._id);
-
-        localStorage.setItem("selectedWatchlist", data[0]._id);
-      }
-    } catch (error) {
-      console.log(error);
-    }
-  }, [mongoId, setSelectedWatchlist, userId]);
-
-  useEffect(() => {
-    fetchWatchlists();
-  }, [fetchWatchlists]);
 
   const activeWatchlist = watchlists.find(
     (watchlist) => watchlist._id === selectedWatchlist,
@@ -69,7 +43,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
         }),
       });
 
-      setWatchlists((prev) => [data, ...prev]);
+      onWatchlistsChange((prev) => [data, ...prev]);
 
       localStorage.setItem("selectedWatchlist", data._id);
 
@@ -101,7 +75,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
         }),
       });
 
-      setWatchlists((prev) =>
+      onWatchlistsChange((prev) =>
         prev.map((watchlist) =>
           watchlist._id === selectedWatchlist ? data : watchlist,
         ),
@@ -140,7 +114,7 @@ const WatchlistSelector = ({ selectedWatchlist, setSelectedWatchlist }) => {
         watchlist => watchlist._id !== selectedWatchlist,
       );
 
-      setWatchlists(remaining);
+      onWatchlistsChange(remaining);
       showSuccess("Watchlist deleted");
 
       if (remaining.length > 0) {

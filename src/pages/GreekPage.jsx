@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MainLayout from "../layout/MainLayout";
 import WatchlistSelector from "../components/WatchlistSelector";
 import GreekTable from "../components/GreekTable";
@@ -63,7 +63,7 @@ const GreekPage = () => {
   });
 
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [watchlist, setWatchlist] = useState(null);
+  const [watchlists, setWatchlists] = useState([]);
   const [marketData, setMarketData] = useState([]);
   const [loadingMarket, setLoadingMarket] = useState(false);
   const [marketError, setMarketError] = useState("");
@@ -78,19 +78,35 @@ const GreekPage = () => {
     watchlistRef.current = selectedWatchlist;
   }, [selectedWatchlist]);
 
-  const fetchWatchlist = useCallback(async () => {
-    if (!selectedWatchlist) {
-      setWatchlist(null);
-      return;
-    }
+  // The list endpoint already returns full watchlist documents (same shape as
+  // the single-watchlist endpoint, no field projection on either route), so
+  // the selected watchlist is derived from the already-fetched list instead
+  // of making a second /api/watchlists/:id request for the same data.
+  const watchlist = useMemo(
+    () => watchlists.find((w) => w._id === selectedWatchlist) || null,
+    [watchlists, selectedWatchlist],
+  );
 
+  const fetchWatchlists = useCallback(async () => {
     try {
-      setWatchlist(await apiFetch(`/api/watchlists/${selectedWatchlist}`));
+      const data = await apiFetch("/api/watchlists");
+      const list = Array.isArray(data) ? data : [];
+      setWatchlists(list);
+
+      const saved = localStorage.getItem("selectedWatchlist");
+      if (saved && list.some((w) => w._id === saved)) {
+        setSelectedWatchlist(saved);
+      } else if (list.length > 0) {
+        setSelectedWatchlist(list[0]._id);
+        localStorage.setItem("selectedWatchlist", list[0]._id);
+      } else {
+        setSelectedWatchlist("");
+      }
     } catch (error) {
       console.log(error);
       setMarketError("Could not load watchlist. Try logging in again.");
     }
-  }, [selectedWatchlist]);
+  }, []);
 
   const fetchMarketData = useCallback(async () => {
     if (!selectedWatchlist) {
@@ -146,42 +162,49 @@ const GreekPage = () => {
     }
   }, [selectedWatchlist]);
 
-  const removeStocksLocally = useCallback((symbols) => {
-    const symbolSet = new Set(
-      (Array.isArray(symbols) ? symbols : [symbols]).map(String),
-    );
+  const removeStocksLocally = useCallback(
+    (symbols) => {
+      const symbolSet = new Set(
+        (Array.isArray(symbols) ? symbols : [symbols]).map(String),
+      );
 
-    setWatchlist((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        stocks: prev.stocks.filter(
-          (s) => !symbolSet.has(s.instrumentKey) && !symbolSet.has(s.symbol),
+      setWatchlists((prev) =>
+        prev.map((w) =>
+          w._id === selectedWatchlist
+            ? {
+                ...w,
+                stocks: w.stocks.filter(
+                  (s) =>
+                    !symbolSet.has(s.instrumentKey) && !symbolSet.has(s.symbol),
+                ),
+              }
+            : w,
         ),
-      };
-    });
+      );
 
-    setMarketData((prev) =>
-      prev.filter(
-        (q) => !symbolSet.has(q.instrumentKey) && !symbolSet.has(q.symbol),
-      ),
-    );
-  }, []);
+      setMarketData((prev) =>
+        prev.filter(
+          (q) => !symbolSet.has(q.instrumentKey) && !symbolSet.has(q.symbol),
+        ),
+      );
+    },
+    [selectedWatchlist],
+  );
 
   const refreshWatchlist = useCallback(async () => {
-    await fetchWatchlist();
-    await fetchMarketData();
-  }, [fetchWatchlist, fetchMarketData]);
+    await Promise.all([fetchWatchlists(), fetchMarketData()]);
+  }, [fetchWatchlists, fetchMarketData]);
 
   useEffect(() => {
-    fetchWatchlist();
-  }, [fetchWatchlist]);
+    fetchWatchlists();
+  }, [fetchWatchlists]);
 
+  // Market data only needs the watchlist ID (already known synchronously from
+  // localStorage on mount), not the full watchlist document — fetch it in
+  // parallel with the watchlist list instead of waiting for that to resolve.
   useEffect(() => {
-    if (watchlist) {
-      fetchMarketData();
-    }
-  }, [watchlist, fetchMarketData]);
+    fetchMarketData();
+  }, [fetchMarketData]);
 
   useEffect(() => {
     const unsubscribe = onMarketTick((tick) => {
@@ -218,6 +241,8 @@ const GreekPage = () => {
         <WatchlistSelector
           selectedWatchlist={selectedWatchlist}
           setSelectedWatchlist={setSelectedWatchlist}
+          watchlists={watchlists}
+          onWatchlistsChange={setWatchlists}
         />
 
         <GreekTable
