@@ -492,5 +492,37 @@ in their new positions; Greek page confirmed completely unaffected (same
 VWAP values/coloring, untouched layout); zero console errors; production
 build compiles clean.
 
+### 2026-10-08 (later) — Compacted Greek page; per-page watchlist memory; Greek LTP styling
+
+Applied the same vertical-compacting treatment to Greek that Stock
+Analysis already had: removed its own "Greek" title/subtitle header and
+standalone "Active Watchlist" card (`MainLayout`'s `hideHeader` prop,
+already added for Stock Analysis). `GreekTable.jsx` now embeds a `compact`
+`WatchlistSelector` directly in its toolbar, and shrank its Search/Export/
+Refresh/Delete/Cancel controls to match Stock Analysis's sizing — table
+data rows are untouched, same "toolbar-only" compacting as before.
+
+**Fixed a real bug along the way:** Stock Analysis and Greek both read/
+wrote the *same* `"selectedWatchlist"` localStorage key, so picking a
+watchlist on one page silently overwrote the other's selection. Added
+`src/utils/storageKeys.js` (`SELECTED_WATCHLIST_KEYS.analysis` /
+`.greek`) and threaded a `watchlistStorageKey` prop through
+`StockAnalysis.jsx` → `StockTable.jsx` and `GreekPage.jsx` →
+`GreekTable.jsx` into `WatchlistSelector.jsx`'s new `storageKey` prop
+(default `"selectedWatchlist"` for safety). Each page now persists its own
+selection independently. `utils/auth.js`'s `clearSession()` clears both
+keys (plus the old shared one) on logout. `Strategies.jsx`'s unrelated
+read of the old shared key was left alone — out of scope, already has a
+safe fallback (`wls[0]?._id`).
+
+Also: renamed Greek's "Rate" column to "LTP" (header + export label), and
+restructured its cell to show LTP on top with change amount + percent
+below (colored), matching Stock Analysis's merged LTP/Change% cell exactly
+— uses the same `formatDailyChange()` helper. Added a "Change %" export
+column for Greek too, mirroring Stock Analysis's export shape.
+
+Verified: production build compiles clean; dev server hot-reloads with no
+warnings in its final state.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**

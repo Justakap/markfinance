@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MainLayout from "../layout/MainLayout";
-import WatchlistSelector from "../components/WatchlistSelector";
 import GreekTable from "../components/GreekTable";
 import { apiFetch } from "../utils/api";
 import { onMarketTick } from "../utils/socket";
+import { SELECTED_WATCHLIST_KEYS } from "../utils/storageKeys";
+
+const WATCHLIST_STORAGE_KEY = SELECTED_WATCHLIST_KEYS.greek;
 
 const GREEK_FIELDS = [
   "delta",
@@ -59,7 +61,7 @@ const mergeGreekTick = (rows, tick) => {
 
 const GreekPage = () => {
   const [selectedWatchlist, setSelectedWatchlist] = useState(() => {
-    return localStorage.getItem("selectedWatchlist") || "";
+    return localStorage.getItem(WATCHLIST_STORAGE_KEY) || "";
   });
 
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -67,13 +69,13 @@ const GreekPage = () => {
   const [marketData, setMarketData] = useState([]);
   const [loadingMarket, setLoadingMarket] = useState(false);
   const [marketError, setMarketError] = useState("");
-  const [marketStatus, setMarketStatus] = useState(null);
+  const [, setMarketStatus] = useState(null);
   const watchlistRef = useRef(selectedWatchlist);
   const fetchInProgressRef = useRef(false);
 
   useEffect(() => {
     if (selectedWatchlist) {
-      localStorage.setItem("selectedWatchlist", selectedWatchlist);
+      localStorage.setItem(WATCHLIST_STORAGE_KEY, selectedWatchlist);
     }
     watchlistRef.current = selectedWatchlist;
   }, [selectedWatchlist]);
@@ -93,12 +95,12 @@ const GreekPage = () => {
       const list = Array.isArray(data) ? data : [];
       setWatchlists(list);
 
-      const saved = localStorage.getItem("selectedWatchlist");
+      const saved = localStorage.getItem(WATCHLIST_STORAGE_KEY);
       if (saved && list.some((w) => w._id === saved)) {
         setSelectedWatchlist(saved);
       } else if (list.length > 0) {
         setSelectedWatchlist(list[0]._id);
-        localStorage.setItem("selectedWatchlist", list[0]._id);
+        localStorage.setItem(WATCHLIST_STORAGE_KEY, list[0]._id);
       } else {
         setSelectedWatchlist("");
       }
@@ -227,26 +229,14 @@ const GreekPage = () => {
   );
 
   return (
-    <MainLayout
-      title="Greek"
-      subtitle={
-        marketStatus?.label
-          ? `Real-time · ${marketStatus.label}`
-          : "Real Time Greek Analysis"
-      }
-      lastUpdated={lastUpdated}
-      showLive
-    >
+    <MainLayout lastUpdated={lastUpdated} showLive hideHeader>
       <div className="min-h-screen bg-gray-50">
-        <WatchlistSelector
+        <GreekTable
           selectedWatchlist={selectedWatchlist}
           setSelectedWatchlist={setSelectedWatchlist}
           watchlists={watchlists}
           onWatchlistsChange={setWatchlists}
-        />
-
-        <GreekTable
-          selectedWatchlist={selectedWatchlist}
+          watchlistStorageKey={WATCHLIST_STORAGE_KEY}
           watchlist={watchlist}
           marketData={marketData}
           refreshWatchlist={refreshWatchlist}

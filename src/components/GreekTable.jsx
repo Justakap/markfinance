@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import StockSearchDropdown from "./StockSearchDropdown";
+import WatchlistSelector from "./WatchlistSelector";
 import GreekTableRow from "./GreekTableRow";
 import { apiFetch } from "../utils/api";
 import { toFiniteNumber } from "../utils/indicators";
@@ -22,6 +23,10 @@ const formatSignedLabel = (value) => {
 
 const GreekTable = ({
   selectedWatchlist,
+  setSelectedWatchlist,
+  watchlists,
+  onWatchlistsChange,
+  watchlistStorageKey,
   watchlist,
   marketData = [],
   refreshWatchlist,
@@ -175,6 +180,10 @@ const GreekTable = ({
                 quote?.ltp ?? quote?.price ?? quote?.optionPremium,
               ).toFixed(2)
             : "--",
+          changePercent:
+            quote?.changePercent != null || quote?.change != null
+              ? `${Number(quote?.changePercent ?? quote?.change).toFixed(2)}%`
+              : "--",
           oi:
             quote?.oi != null
               ? Number(quote.oi).toLocaleString("en-IN")
@@ -206,7 +215,8 @@ const GreekTable = ({
     () => [
       { label: "Symbol", value: "symbol" },
       { label: "Company", value: "company" },
-      { label: "Rate", value: "rate" },
+      { label: "LTP", value: "rate" },
+      { label: "Change %", value: "changePercent" },
       { label: "OI", value: "oi" },
       { label: "RSI", value: "rsi" },
       { label: "Oi Chng", value: "oiChange" },
@@ -327,33 +337,44 @@ const GreekTable = ({
   return (
     <div className="w-full px-6 mt-4">
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[650px]">
-        <div className="flex justify-between items-center p-4 border-b border-gray-200 gap-4">
+        <div className="flex justify-between items-center p-4 border-b border-gray-200 gap-3">
           <StockSearchDropdown
+            compact
             selectedWatchlist={selectedWatchlist}
             watchlistStocks={allStocks}
             refreshWatchlist={refreshWatchlist}
             onRemoveStock={onRemoveStock}
           />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {setSelectedWatchlist && watchlists && (
+              <WatchlistSelector
+                compact
+                selectedWatchlist={selectedWatchlist}
+                setSelectedWatchlist={setSelectedWatchlist}
+                watchlists={watchlists}
+                onWatchlistsChange={onWatchlistsChange}
+                storageKey={watchlistStorageKey}
+              />
+            )}
             {selectionMode && selectedSymbols.size > 0 && (
               <>
                 <button
                   type="button"
                   onClick={deleteSelected}
                   disabled={deleting}
-                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                  className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg text-[13px] font-medium transition"
                 >
                   {deleting ? (
-                    <Loader2 size={16} className="animate-spin" />
+                    <Loader2 size={14} className="animate-spin" />
                   ) : (
-                    <Trash2 size={16} />
+                    <Trash2 size={14} />
                   )}
                   Delete ({selectedSymbols.size})
                 </button>
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                  className="border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50"
                 >
                   Cancel
                 </button>
@@ -364,13 +385,14 @@ const GreekTable = ({
                 <button
                   type="button"
                   disabled
-                  className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 opacity-60"
+                  className="inline-flex items-center gap-2 border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-700 opacity-60"
                 >
                   Export
                 </button>
               }
             >
               <TableExportMenu
+                compact
                 rows={exportRows}
                 columns={exportColumns}
                 filePrefix="Report"
@@ -381,10 +403,10 @@ const GreekTable = ({
               type="button"
               onClick={handleManualRefresh}
               disabled={refreshing || loadingMarket}
-              className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              className="inline-flex items-center gap-2 border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-60"
             >
               {refreshing ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={13} className="animate-spin" />
               ) : null}
               Refresh
             </button>
@@ -436,7 +458,7 @@ const GreekTable = ({
                 )}
                 {[
                   ["symbol", "Symbol"],
-                  ["rate", "Rate"],
+                  ["rate", "LTP"],
                   ["oi", "OI"],
                   ["rsi", "RSI"],
                   ["oiChange", "Oi Chng"],

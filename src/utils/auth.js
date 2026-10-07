@@ -1,3 +1,5 @@
+import { SELECTED_WATCHLIST_KEYS } from "./storageKeys";
+
 export function isLoggedIn() {
   try {
     const user = localStorage.getItem("user");
@@ -15,6 +17,9 @@ export function clearSession() {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     localStorage.removeItem("selectedWatchlist");
+    Object.values(SELECTED_WATCHLIST_KEYS).forEach((key) =>
+      localStorage.removeItem(key),
+    );
   } catch {
     // localStorage unavailable (private mode, etc.) — nothing to clear
   }

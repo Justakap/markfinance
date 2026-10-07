@@ -4,6 +4,9 @@ import StockTable from "../components/StockTable";
 import { apiFetch } from "../utils/api";
 import { onMarketTick } from "../utils/socket";
 import { normalizeIndicatorQuote } from "../utils/indicators";
+import { SELECTED_WATCHLIST_KEYS } from "../utils/storageKeys";
+
+const WATCHLIST_STORAGE_KEY = SELECTED_WATCHLIST_KEYS.analysis;
 
 const RSI_FIELDS = [
   "ema20",
@@ -71,7 +74,7 @@ const mergeMarketTick = (rows, tick) => {
 
 const StockAnalysis = () => {
   const [selectedWatchlist, setSelectedWatchlist] = useState(() => {
-    return localStorage.getItem("selectedWatchlist") || "";
+    return localStorage.getItem(WATCHLIST_STORAGE_KEY) || "";
   });
 
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -95,7 +98,7 @@ const StockAnalysis = () => {
 
   useEffect(() => {
     if (selectedWatchlist) {
-      localStorage.setItem("selectedWatchlist", selectedWatchlist);
+      localStorage.setItem(WATCHLIST_STORAGE_KEY, selectedWatchlist);
     }
     watchlistRef.current = selectedWatchlist;
   }, [selectedWatchlist]);
@@ -115,12 +118,12 @@ const StockAnalysis = () => {
       const list = Array.isArray(data) ? data : [];
       setWatchlists(list);
 
-      const saved = localStorage.getItem("selectedWatchlist");
+      const saved = localStorage.getItem(WATCHLIST_STORAGE_KEY);
       if (saved && list.some((w) => w._id === saved)) {
         setSelectedWatchlist(saved);
       } else if (list.length > 0) {
         setSelectedWatchlist(list[0]._id);
-        localStorage.setItem("selectedWatchlist", list[0]._id);
+        localStorage.setItem(WATCHLIST_STORAGE_KEY, list[0]._id);
       } else {
         setSelectedWatchlist("");
       }
@@ -249,6 +252,7 @@ const StockAnalysis = () => {
           setSelectedWatchlist={setSelectedWatchlist}
           watchlists={watchlists}
           onWatchlistsChange={setWatchlists}
+          watchlistStorageKey={WATCHLIST_STORAGE_KEY}
           watchlist={watchlist}
           marketData={marketData}
           rsiTimeframe={rsiTimeframe}

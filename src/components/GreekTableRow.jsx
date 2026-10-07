@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { toFiniteNumber } from "../utils/indicators";
+import { formatDailyChange } from "../utils/currency";
 
 const displaySymbol = (symbol) =>
   String(symbol || "").replace(".NS", "").replace(".BO", "");
@@ -91,6 +92,13 @@ const GreekTableRow = memo(function GreekTableRow({
           ? "text-green-600"
           : "text-gray-800"
       : "text-gray-800";
+  const changeValue = quote?.changeAmount ?? quote?.change ?? 0;
+  const changeColor =
+    changeValue > 0
+      ? "text-green-600"
+      : changeValue < 0
+        ? "text-red-600"
+        : "text-gray-600";
   const rowId = stock.instrumentKey || stock.symbol;
   const rowHighlight = isSelected ? "bg-blue-50/70" : "";
 
@@ -149,8 +157,15 @@ const GreekTableRow = memo(function GreekTableRow({
           <span className="text-xs text-gray-600">{stock.name}</span>
         </div>
       </td>
-      <td className="p-3 text-gray-800 text-sm tabular-nums">
-        {Number.isFinite(rate) ? formatDecimal(rate) : "--"}
+      <td className="p-3 whitespace-nowrap">
+        <div className="flex flex-col leading-snug">
+          <span className="text-gray-800 font-medium tabular-nums text-sm">
+            {Number.isFinite(rate) ? formatDecimal(rate) : "--"}
+          </span>
+          <span className={`text-[11px] font-medium tabular-nums ${changeColor}`}>
+            {formatDailyChange(quote, stock)}
+          </span>
+        </div>
       </td>
       <td className="p-3 text-gray-800 text-sm tabular-nums">
         {formatIndianNumber(oi)}

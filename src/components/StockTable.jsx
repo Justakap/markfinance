@@ -103,6 +103,7 @@ const StockTable = ({
   setSelectedWatchlist,
   watchlists,
   onWatchlistsChange,
+  watchlistStorageKey,
   watchlist,
   marketData = [],
   rsiTimeframe,
@@ -477,6 +478,7 @@ const StockTable = ({
                   setSelectedWatchlist={setSelectedWatchlist}
                   watchlists={watchlists}
                   onWatchlistsChange={onWatchlistsChange}
+                  storageKey={watchlistStorageKey}
                 />
               )}
               {selectionMode && selectedSymbols.size > 0 && (

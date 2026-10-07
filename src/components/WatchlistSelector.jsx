@@ -13,6 +13,7 @@ const WatchlistSelector = ({
   watchlists,
   onWatchlistsChange,
   compact = false,
+  storageKey = "selectedWatchlist",
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -46,7 +47,7 @@ const WatchlistSelector = ({
 
       onWatchlistsChange((prev) => [data, ...prev]);
 
-      localStorage.setItem("selectedWatchlist", data._id);
+      localStorage.setItem(storageKey, data._id);
 
       setSelectedWatchlist(data._id);
 
@@ -119,10 +120,10 @@ const WatchlistSelector = ({
       showSuccess("Watchlist deleted");
 
       if (remaining.length > 0) {
-        localStorage.setItem("selectedWatchlist", remaining[0]._id);
+        localStorage.setItem(storageKey, remaining[0]._id);
         setSelectedWatchlist(remaining[0]._id);
       } else {
-        localStorage.removeItem("selectedWatchlist");
+        localStorage.removeItem(storageKey);
         setSelectedWatchlist("");
       }
     } catch (error) {
@@ -138,7 +139,7 @@ const WatchlistSelector = ({
       <select
         value={selectedWatchlist}
         onChange={(e) => {
-          localStorage.setItem("selectedWatchlist", e.target.value);
+          localStorage.setItem(storageKey, e.target.value);
 
           setSelectedWatchlist(e.target.value);
         }}
