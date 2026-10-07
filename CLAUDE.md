@@ -435,5 +435,26 @@ fails with a pre-existing `Cannot find module 'react-router/dom'` error in
 `App.test.js` — confirmed via `git stash` this is unrelated to this change
 (identical failure with the change removed).
 
+### 2026-10-07 (later still) — Fixed search/export dropdowns rendering behind the table
+
+The earlier narrow-screen toolbar fix (`overflow-x-auto` + `flex-shrink-0`
+on the toolbar row, to stop the search box being squeezed) had a side
+effect: setting `overflow-x` to anything but `visible` forces the browser
+to also compute `overflow-y` as `auto` (CSS spec behavior), which clips any
+vertically-overflowing absolutely-positioned descendant to that row's
+~56px height. This clipped both `StockSearchDropdown`'s results dropdown
+and `TableExportMenu`'s menu, making them appear to render "behind" the
+table instead of over it.
+
+Fix: removed `overflow-x-auto` and the `flex-shrink-0` wrappers from the
+toolbar row in `StockTable.jsx`, reverting to plain flex. Both dropdowns
+confirmed rendering correctly over the table again. Trade-off: the
+narrow-screen fix (search box no longer shrinking) is reverted along with
+it — any `overflow-x-auto` ancestor of these dropdowns reintroduces the
+same clipping bug, so fixing narrow screens again would need the scrollable
+region scoped away from anything that opens a dropdown (e.g. only the
+control buttons, not search/export), not attempted here since it wasn't
+asked for.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
