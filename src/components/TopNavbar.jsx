@@ -9,7 +9,7 @@ import {
 
 import { NavLink } from "react-router-dom";
 
-const TopNavbar = () => {
+const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
   const menuItems = [
     {
       title: "Overview",
@@ -93,7 +93,20 @@ const TopNavbar = () => {
         })}
       </nav>
 
-      <div className="ml-auto pl-2">
+      {showLive && (
+        <div className="ml-auto flex items-center gap-3 pl-2">
+          <p className="text-[11px] md:text-sm font-medium text-black whitespace-nowrap hidden sm:block">
+            Last Updated {lastUpdatedLabel}
+          </p>
+
+          <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full whitespace-nowrap">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-green-600 font-medium text-sm">LIVE</span>
+          </div>
+        </div>
+      )}
+
+      <div className={showLive ? "pl-2" : "ml-auto pl-2"}>
         <NavLink
           to="/settings"
           className={({ isActive }) =>

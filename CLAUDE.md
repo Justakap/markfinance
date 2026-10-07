@@ -365,5 +365,38 @@ table's all 15 columns are now visible with no horizontal scrollbar at a
 navbar (active-route highlighting works, "Settings" still reachable).
 `CI=true npx react-scripts build` compiles clean with no new warnings.
 
+### 2026-10-08 — Made Stock Analysis significantly more compact vertically
+
+Scoped to the Stock Analysis page only — Greek and every other page using
+`MainLayout` are unchanged. Removed the page's own "Stock Analysis" title/
+subtitle header and the standalone "Active Watchlist" card; the table now
+starts immediately below one compact toolbar (Search → Watchlist →
+Timeframe → Refresh → Export → Analysis) instead of after three stacked
+blocks.
+
+- `MainLayout.jsx` gained an optional `hideHeader` prop. When a page sets
+  both `hideHeader` and `showLive`, the Last Updated/LIVE badge renders in
+  `TopNavbar` instead of the per-page header; every other page's header is
+  untouched (the badge is never duplicated — it only ever appears in one
+  place for a given page).
+- `WatchlistSelector.jsx` gained a `compact` prop: renders just the
+  dropdown + edit/delete/+New controls with no card or labels. Default
+  (used by `GreekTable`, unchanged) still renders the full "Active
+  Watchlist" card exactly as before — same component, same CRUD logic,
+  purely a rendering branch.
+- `StockTable.jsx`'s toolbar now also renders the watchlist controls
+  (`compact`). The search box and controls group are `flex-shrink-0` with
+  `overflow-x-auto` on the row, so the search input never gets squeezed to
+  unusable width on narrow screens — the toolbar scrolls horizontally
+  instead (same pattern the table body already uses), matching "preserve
+  existing responsive behavior" rather than inventing a new breakpoint
+  layout.
+
+Verified live against a local backend: watchlist switching, rename modal,
+search, timeframe selection, Refresh, Export menu, and Analysis modal all
+work; zero console errors; Greek/Dashboard confirmed unaffected (no
+duplicated badge); desktop (1470px) and narrow (834px) viewports both
+checked. `CI=true npx react-scripts build` compiles clean.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**

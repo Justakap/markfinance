@@ -12,6 +12,7 @@ const WatchlistSelector = ({
   setSelectedWatchlist,
   watchlists,
   onWatchlistsChange,
+  compact = false,
 }) => {
   const [showModal, setShowModal] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
@@ -132,65 +133,73 @@ const WatchlistSelector = ({
     }
   };
 
+  const controls = (
+    <div className="flex items-center gap-3">
+      <select
+        value={selectedWatchlist}
+        onChange={(e) => {
+          localStorage.setItem("selectedWatchlist", e.target.value);
+
+          setSelectedWatchlist(e.target.value);
+        }}
+        className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg"
+      >
+        {watchlists.map((watchlist) => (
+          <option key={watchlist._id} value={watchlist._id}>
+            {watchlist.name}
+          </option>
+        ))}
+      </select>
+
+      <button
+        onClick={() => {
+          setRenameValue(activeWatchlist?.name || "");
+          setShowRenameModal(true);
+        }}
+        disabled={!selectedWatchlist}
+        className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+        title="Rename watchlist"
+      >
+        <Pencil size={16} />
+      </button>
+
+      <button
+        onClick={deleteWatchlist}
+        disabled={!selectedWatchlist || loading}
+        className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-red-500 hover:bg-red-50 disabled:opacity-40"
+        title="Delete watchlist"
+      >
+        <Trash2 size={16} />
+      </button>
+
+      <button
+        onClick={() => setShowModal(true)}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+      >
+        + New
+      </button>
+    </div>
+  );
+
   return (
     <>
-      <div className="w-full px-6 mt-3">
-        <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm flex justify-between items-center">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-800">
-              Active Watchlist
-            </h2>
+      {compact ? (
+        controls
+      ) : (
+        <div className="w-full px-6 mt-3">
+          <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm flex justify-between items-center">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-800">
+                Active Watchlist
+              </h2>
 
-            <p className="text-xs text-gray-500">Select Watchlist</p>
-          </div>
+              <p className="text-xs text-gray-500">Select Watchlist</p>
+            </div>
 
-          <div className="flex items-center gap-3">
-            <select
-              value={selectedWatchlist}
-              onChange={(e) => {
-                localStorage.setItem("selectedWatchlist", e.target.value);
-
-                setSelectedWatchlist(e.target.value);
-              }}
-              className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg"
-            >
-              {watchlists.map((watchlist) => (
-                <option key={watchlist._id} value={watchlist._id}>
-                  {watchlist.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              onClick={() => {
-                setRenameValue(activeWatchlist?.name || "");
-                setShowRenameModal(true);
-              }}
-              disabled={!selectedWatchlist}
-              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
-              title="Rename watchlist"
-            >
-              <Pencil size={16} />
-            </button>
-
-            <button
-              onClick={deleteWatchlist}
-              disabled={!selectedWatchlist || loading}
-              className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-red-500 hover:bg-red-50 disabled:opacity-40"
-              title="Delete watchlist"
-            >
-              <Trash2 size={16} />
-            </button>
-
-            <button
-              onClick={() => setShowModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
-            >
-              + New
-            </button>
+            {controls}
           </div>
         </div>
-      </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/30 flex justify-center items-center z-50">

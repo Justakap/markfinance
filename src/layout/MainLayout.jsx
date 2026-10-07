@@ -8,6 +8,7 @@ const MainLayout = ({
   lastUpdated,
   showLive = false,
   actions,
+  hideHeader = false,
 }) => {
   const [, forceUpdate] = useState(0);
 
@@ -49,12 +50,21 @@ const MainLayout = ({
     return `${formatted} · ${minutes}m ago`;
   };
 
+  // The navbar only ever shows the live badge for a page that both hides its
+  // own per-page header AND opted into showLive — every other page (Greek,
+  // Dashboard, etc.) keeps its existing header-hosted badge untouched, with
+  // no badge duplicated into the navbar.
+  const showLiveInNavbar = hideHeader && showLive;
+
   return (
     <div className="bg-gray-50 min-h-screen">
-      <TopNavbar />
+      <TopNavbar
+        showLive={showLiveInNavbar}
+        lastUpdatedLabel={showLiveInNavbar ? getTimeAgo() : ""}
+      />
 
       <div className="pt-16">
-        {title && (
+        {title && !hideHeader && (
           <header className="sticky top-16 z-30 bg-white border-b border-gray-200 shadow-sm">
             <div className="px-7 py-3 flex items-center justify-between gap-6">
               <div>

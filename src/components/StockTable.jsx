@@ -3,6 +3,7 @@ import { Loader2, Trash2 } from "lucide-react";
 import StockModal from "./StockModal";
 import StockSearchDropdown from "./StockSearchDropdown";
 import StockTableRow from "./StockTableRow";
+import WatchlistSelector from "./WatchlistSelector";
 import { apiFetch } from "../utils/api";
 import {
   getRsiDataForTimeframe,
@@ -99,6 +100,9 @@ const getDmaStatusValue = (quote) => {
 
 const StockTable = ({
   selectedWatchlist,
+  setSelectedWatchlist,
+  watchlists,
+  onWatchlistsChange,
   watchlist,
   marketData = [],
   rsiTimeframe,
@@ -455,14 +459,25 @@ const StockTable = ({
     <>
       <div className="w-full px-6 mt-4">
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[650px]">
-          <div className="flex justify-between items-center p-4 border-b border-gray-200">
-            <StockSearchDropdown
-              selectedWatchlist={selectedWatchlist}
-              watchlistStocks={allStocks}
-              refreshWatchlist={refreshWatchlist}
-              onRemoveStock={handleRemoveFromDropdown}
-            />
-            <div className="flex items-center gap-3">
+          <div className="flex justify-between items-center gap-3 p-4 border-b border-gray-200 overflow-x-auto">
+            <div className="flex-shrink-0">
+              <StockSearchDropdown
+                selectedWatchlist={selectedWatchlist}
+                watchlistStocks={allStocks}
+                refreshWatchlist={refreshWatchlist}
+                onRemoveStock={handleRemoveFromDropdown}
+              />
+            </div>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {setSelectedWatchlist && watchlists && (
+                <WatchlistSelector
+                  compact
+                  selectedWatchlist={selectedWatchlist}
+                  setSelectedWatchlist={setSelectedWatchlist}
+                  watchlists={watchlists}
+                  onWatchlistsChange={onWatchlistsChange}
+                />
+              )}
               {selectionMode && selectedSymbols.size > 0 && (
                 <>
                   <button

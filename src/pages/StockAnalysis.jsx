@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import MainLayout from "../layout/MainLayout";
-import WatchlistSelector from "../components/WatchlistSelector";
 import StockTable from "../components/StockTable";
 import { apiFetch } from "../utils/api";
 import { onMarketTick } from "../utils/socket";
@@ -79,7 +78,7 @@ const StockAnalysis = () => {
   const [marketData, setMarketData] = useState([]);
   const [loadingMarket, setLoadingMarket] = useState(false);
   const [marketError, setMarketError] = useState("");
-  const [marketStatus, setMarketStatus] = useState(null);
+  const [, setMarketStatus] = useState(null);
   const watchlistRef = useRef(selectedWatchlist);
   const fetchInProgressRef = useRef(false);
 
@@ -242,26 +241,13 @@ const StockAnalysis = () => {
   }, []);
 
   return (
-    <MainLayout
-      title="Stock Analysis"
-      subtitle={
-        marketStatus?.label
-          ? `Real-time · ${marketStatus.label}`
-          : "Real Time Market Analysis"
-      }
-      lastUpdated={lastUpdated}
-      showLive
-    >
+    <MainLayout lastUpdated={lastUpdated} showLive hideHeader>
       <div className="min-h-screen bg-gray-50">
-        <WatchlistSelector
+        <StockTable
           selectedWatchlist={selectedWatchlist}
           setSelectedWatchlist={setSelectedWatchlist}
           watchlists={watchlists}
           onWatchlistsChange={setWatchlists}
-        />
-
-        <StockTable
-          selectedWatchlist={selectedWatchlist}
           watchlist={watchlist}
           marketData={marketData}
           rsiTimeframe={rsiTimeframe}
