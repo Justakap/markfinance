@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import Sidebar from "../components/Sidebar";
+import TopNavbar from "../components/TopNavbar";
 
 const MainLayout = ({
   children,
@@ -9,7 +9,6 @@ const MainLayout = ({
   showLive = false,
   actions,
 }) => {
-  const [collapsed, setCollapsed] = useState(false);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
@@ -52,17 +51,11 @@ const MainLayout = ({
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+      <TopNavbar />
 
-      <div
-        className={`
-          transition-all
-          duration-300
-          ${collapsed ? "ml-[80px]" : "ml-[240px]"}
-        `}
-      >
+      <div className="pt-16">
         {title && (
-          <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+          <header className="sticky top-16 z-30 bg-white border-b border-gray-200 shadow-sm">
             <div className="px-7 py-3 flex items-center justify-between gap-6">
               <div>
                 <h1 className="text-xl font-bold text-blue-700">{title}</h1>

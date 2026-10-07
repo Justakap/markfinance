@@ -5,13 +5,11 @@ import {
   CandlestickChart,
   BarChart3,
   Settings,
-  Menu,
-  ChevronLeft,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
 
-const Sidebar = ({ collapsed, setCollapsed }) => {
+const TopNavbar = () => {
   const menuItems = [
     {
       title: "Overview",
@@ -57,37 +55,12 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
   }
 
   return (
-    <div
-      className={`
-        fixed
-        left-0
-        top-0
-        h-screen
-        bg-white
-        border-r
-        border-gray-200
-        flex
-        flex-col
-        z-50
-        transition-all
-        duration-300
-        ${collapsed ? "w-[80px]" : "w-[240px]"}
-      `}
-    >
-      <div className="flex items-center justify-between px-4 py-5 border-b border-gray-100">
-        {!collapsed && (
-          <h1 className="text-2xl font-bold text-blue-700">Mark Finance</h1>
-        )}
+    <div className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-50 flex items-center px-4 gap-2">
+      <h1 className="text-xl font-bold text-blue-700 whitespace-nowrap pr-4 mr-2 border-r border-gray-100">
+        Mark Finance
+      </h1>
 
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-2 rounded-lg hover:bg-gray-100 transition"
-        >
-          {collapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
-        </button>
-      </div>
-
-      <div className="flex-1 px-3 py-4">
+      <nav className="flex items-center gap-1 overflow-x-auto">
         {menuItems.map((item) => {
           const Icon = item.icon;
 
@@ -99,10 +72,11 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
                 `
                 flex
                 items-center
-                ${collapsed ? "justify-center" : "gap-4 px-4"}
-                h-14
-                rounded-xl
-                mb-2
+                gap-2
+                px-3
+                h-10
+                rounded-lg
+                whitespace-nowrap
                 transition-all
                 ${
                   isActive
@@ -112,25 +86,25 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
               `
               }
             >
-              <Icon size={22} />
-
-              {!collapsed && <span className="text-base">{item.title}</span>}
+              <Icon size={18} />
+              <span className="text-sm hidden lg:inline">{item.title}</span>
             </NavLink>
           );
         })}
-      </div>
+      </nav>
 
-      <div className="border-t border-gray-100 p-3">
+      <div className="ml-auto pl-2">
         <NavLink
           to="/settings"
           className={({ isActive }) =>
             `
-            w-full
             flex
             items-center
-            ${collapsed ? "justify-center" : "gap-3 px-3"}
-            h-12
+            gap-2
+            px-3
+            h-10
             rounded-lg
+            whitespace-nowrap
             transition
             ${
               isActive
@@ -140,13 +114,12 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
           `
           }
         >
-          <Settings size={20} />
-
-          {!collapsed && <span>Settings</span>}
+          <Settings size={18} />
+          <span className="text-sm hidden lg:inline">Settings</span>
         </NavLink>
       </div>
     </div>
   );
 };
 
-export default Sidebar;
+export default TopNavbar;

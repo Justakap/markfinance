@@ -134,7 +134,7 @@ const WatchlistSelector = ({
 
   return (
     <>
-      <div className="max-w-7xl mx-auto px-6 mt-3">
+      <div className="w-full px-6 mt-3">
         <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 shadow-sm flex justify-between items-center">
           <div>
             <h2 className="text-sm font-semibold text-gray-800">

@@ -69,7 +69,8 @@ this one. Do not assume changes here are reflected there or vice versa.
   `GreekTable`/`GreekTableRow`, `WatchlistSelector` (watchlist CRUD UI),
   `StockSearchDropdown` (Upstox instrument search), `StrategyModal`/
   `StrategyResultsModal`, `TableExportMenu` (xlsx/PDF export), `MainLayout`/
-  `Sidebar` (app shell).
+  `TopNavbar` (app shell — a fixed horizontal top bar, not a left sidebar;
+  see Change History).
 
 ## Production
 
@@ -336,6 +337,33 @@ new quote-derived numeric field anywhere, use `toFiniteNumber()` for the
 presence check rather than a bare `Number(...)` — don't reintroduce this.
 Sort-value fallbacks (`?? 0` for tie-breaking) are a different, intentional
 pattern and were left alone.
+
+### 2026-10-07 — Replaced the left sidebar with a top navbar
+
+The fixed-width left `Sidebar` (240px expanded / 80px collapsed) was eating
+horizontal space from the Stock Analysis/Greek tables, which already have
+15/11 columns and were scrolling horizontally to see all of them. Replaced
+it with `TopNavbar` (new component) — a fixed horizontal bar at the top
+(brand left, nav links center, Settings right), and `MainLayout` now adds
+top padding (`pt-16`) instead of a left margin. Deleted `Sidebar.jsx`
+(confirmed unused elsewhere via a full-repo grep before deleting).
+
+Also widened the watchlist-selector/table containers that were capped at
+`max-w-7xl` (1280px, originally sized to roughly fit the viewport minus the
+old sidebar) to `w-full`: `WatchlistSelector.jsx`, `StockTable.jsx` (both
+the empty-state and populated-table wrappers), `GreekTable.jsx` (same) —
+otherwise the freed-up width from removing the sidebar would have gone
+unused and the tables would still have clipped on larger screens. Left
+every other `max-w-7xl` usage alone (`Dashboard`'s `AnalysisCards`/
+`AnalysisSection`, `LandingPage`, `ValidationPage`, `StockModal`) — those
+aren't wide data tables and weren't part of what was asked.
+
+Verified visually: built against a local backend with a real test
+watchlist (6 stocks), confirmed via screenshot that the Stock Analysis
+table's all 15 columns are now visible with no horizontal scrollbar at a
+1456px viewport, and that Greek/Dashboard render correctly with the new
+navbar (active-route highlighting works, "Settings" still reachable).
+`CI=true npx react-scripts build` compiles clean with no new warnings.
 
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
