@@ -142,7 +142,9 @@ const WatchlistSelector = ({
 
           setSelectedWatchlist(e.target.value);
         }}
-        className="bg-white border border-gray-300 text-gray-700 px-3 py-2 rounded-lg"
+        className={`bg-white border border-gray-300 text-gray-700 rounded-lg ${
+          compact ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2"
+        }`}
       >
         {watchlists.map((watchlist) => (
           <option key={watchlist._id} value={watchlist._id}>
@@ -157,24 +159,30 @@ const WatchlistSelector = ({
           setShowRenameModal(true);
         }}
         disabled={!selectedWatchlist}
-        className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+        className={`inline-flex items-center justify-center rounded-lg border border-gray-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40 ${
+          compact ? "h-9 w-9" : "h-10 w-10"
+        }`}
         title="Rename watchlist"
       >
-        <Pencil size={16} />
+        <Pencil size={compact ? 14 : 16} />
       </button>
 
       <button
         onClick={deleteWatchlist}
         disabled={!selectedWatchlist || loading}
-        className="h-10 w-10 inline-flex items-center justify-center rounded-lg border border-gray-300 text-red-500 hover:bg-red-50 disabled:opacity-40"
+        className={`inline-flex items-center justify-center rounded-lg border border-gray-300 text-red-500 hover:bg-red-50 disabled:opacity-40 ${
+          compact ? "h-9 w-9" : "h-10 w-10"
+        }`}
         title="Delete watchlist"
       >
-        <Trash2 size={16} />
+        <Trash2 size={compact ? 14 : 16} />
       </button>
 
       <button
         onClick={() => setShowModal(true)}
-        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+        className={`bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium ${
+          compact ? "px-3 py-1.5 text-[13px]" : "px-4 py-2 text-sm"
+        }`}
       >
         + New
       </button>

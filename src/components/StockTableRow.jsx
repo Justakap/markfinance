@@ -1,9 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import {
-  formatChangeAmount,
-  formatChangePercent,
-  formatPriceFromQuote,
-} from "../utils/currency";
+import { formatDailyChange, formatPriceFromQuote } from "../utils/currency";
 import { normalizeIndicatorQuote, toFiniteNumber } from "../utils/indicators";
 
 const displaySymbol = (symbol) =>
@@ -157,6 +153,15 @@ const StockTableRow = memo(function StockTableRow({
   const isAboveDma = hasDmaSignal ? price > ema20 : null;
   const velocity = getVelocityDetails(quote);
   const priceVelocity = getPriceVelocityDetails(quote);
+  const vwap = toFiniteNumber(quote?.vwap);
+  const vwapColor =
+    Number.isFinite(price) && Number.isFinite(vwap)
+      ? price < vwap
+        ? "text-red-600"
+        : price > vwap
+          ? "text-green-600"
+          : "text-gray-800"
+      : "text-gray-800";
 
   return (
     <tr
@@ -176,7 +181,7 @@ const StockTableRow = memo(function StockTableRow({
       <td className="p-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-blue-700 text-[14.5px]">
+            <span className="font-medium text-blue-700">
               {displaySymbol(stock.symbol)}
             </span>
             <span
@@ -185,37 +190,34 @@ const StockTableRow = memo(function StockTableRow({
               {stock.market}
             </span>
           </div>
-          <span className="text-[11px] text-gray-600 truncate max-w-[180px]" title={stock.name}>
+          <span className="text-xs text-gray-600 truncate max-w-[180px]" title={stock.name}>
             {stock.name}
           </span>
         </div>
       </td>
-      <td className="p-3 text-gray-800 font-medium text-[14.5px]">
-        {formatPriceFromQuote(quote, stock)}
-      </td>
-      <td className={`p-3 whitespace-nowrap ${changeColor}`}>
+      <td className="p-3 whitespace-nowrap">
         <div className="flex flex-col leading-snug">
-          <span className="text-[13px] font-semibold tabular-nums">
-            {formatChangeAmount(quote, stock)}
+          <span className="text-gray-800 font-medium tabular-nums">
+            {formatPriceFromQuote(quote, stock)}
           </span>
-          <span className="text-[10px] font-medium tabular-nums opacity-80">
-            {formatChangePercent(quote)}
+          <span className={`text-[11px] font-medium tabular-nums ${changeColor}`}>
+            {formatDailyChange(quote, stock)}
           </span>
         </div>
       </td>
-      <td className="p-3 text-gray-800 text-[13px]">
+      <td className="p-3 text-gray-800 text-sm">
         {formatIndianNumber(quote?.volume)}
       </td>
-      <td className="p-3 text-gray-800 text-[13px]">
+      <td className="p-3 text-gray-800 text-sm">
         {formatIndianNumber(quote?.volAvg)}
       </td>
-      <td className="p-3 text-gray-800 text-[13px]">
+      <td className="p-3 text-gray-800 text-sm">
         {acc != null ? acc.toFixed(2) : "--"}
       </td>
-      <td className="p-3 text-gray-800 text-[14.5px]">{quote?.ema20 ?? "--"}</td>
-      <td className="p-3 text-gray-800 text-[14.5px]">{quote?.ema75 ?? "--"}</td>
+      <td className="p-3 text-gray-800">{quote?.ema20 ?? "--"}</td>
+      <td className="p-3 text-gray-800">{quote?.ema75 ?? "--"}</td>
       <td
-        className={`p-3 font-semibold text-[13px] ${
+        className={`p-3 font-semibold text-sm ${
           isAboveDma == null
             ? "text-gray-500"
             : isAboveDma
@@ -225,10 +227,10 @@ const StockTableRow = memo(function StockTableRow({
       >
         {isAboveDma == null ? "--" : isAboveDma ? "Above" : "Below"}
       </td>
-      <td className="p-3 text-gray-800 text-[14.5px]">{rsiData.rsi ?? "--"}</td>
-      <td className="p-3 text-gray-800 text-[14.5px]">{rsiData.prev ?? "--"}</td>
+      <td className="p-3 text-gray-800">{rsiData.rsi ?? "--"}</td>
+      <td className="p-3 text-gray-800">{rsiData.prev ?? "--"}</td>
       <td
-        className={`p-3 font-semibold text-[13px] ${
+        className={`p-3 font-semibold text-sm ${
           (rsiData.change || 0) > 0 ? "text-green-600" : "text-red-600"
         }`}
       >
@@ -236,7 +238,13 @@ const StockTableRow = memo(function StockTableRow({
           ? `${rsiData.change > 0 ? "+" : ""}${Number(rsiData.change).toFixed(2)}`
           : "--"}
       </td>
-      <td className={`group relative p-3 text-[13px] font-semibold ${velocity.tone}`}>
+      <td className={`p-3 tabular-nums font-semibold text-sm ${vwapColor}`}>
+        {Number.isFinite(vwap) ? vwap.toFixed(2) : "--"}
+      </td>
+      <td className="p-3 text-gray-800">
+        {quote?.pe != null ? Number(quote.pe).toFixed(2) : "--"}
+      </td>
+      <td className={`group relative p-3 text-sm font-semibold ${velocity.tone}`}>
         <span>{velocity.value}</span>
         <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-72 rounded-md border border-gray-200 bg-white p-2 text-[11px] shadow-lg group-hover:block">
           <div className="mb-2 grid grid-cols-[44px_1fr_1fr_1fr] items-center gap-2 border-b border-gray-100 pb-1 font-semibold text-gray-600">
@@ -285,7 +293,7 @@ const StockTableRow = memo(function StockTableRow({
           </div>
         </div>
       </td>
-      <td className={`group relative p-3 text-[13px] font-semibold ${priceVelocity.tone}`}>
+      <td className={`group relative p-3 text-sm font-semibold ${priceVelocity.tone}`}>
         <span>{priceVelocity.value}</span>
         <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-72 rounded-md border border-gray-200 bg-white p-2 text-[11px] shadow-lg group-hover:block">
           <div className="mb-2 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -337,9 +345,6 @@ const StockTableRow = memo(function StockTableRow({
             })}
           </div>
         </div>
-      </td>
-      <td className="p-3 text-gray-800 text-[14.5px]">
-        {quote?.pe != null ? Number(quote.pe).toFixed(2) : "--"}
       </td>
     </tr>
   );

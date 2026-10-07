@@ -8,6 +8,7 @@ const StockSearchDropdown = ({
   watchlistStocks,
   refreshWatchlist,
   onRemoveStock,
+  compact = false,
 }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
@@ -188,7 +189,9 @@ const StockSearchDropdown = ({
         placeholder="Search stocks, futures, options, commodities..."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        className="w-full border border-gray-300 px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+        className={`w-full border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 ${
+          compact ? "px-3 py-1.5 text-[13px]" : "px-4 py-2"
+        }`}
       />
 
       {searching && query.trim().length >= 2 && (

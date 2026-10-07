@@ -36,6 +36,7 @@ const TableExportMenu = ({
   columns = [],
   filePrefix = "Report",
   disabled = false,
+  compact = false,
 }) => {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
@@ -115,11 +116,13 @@ const TableExportMenu = ({
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled}
-        className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+        className={`inline-flex items-center gap-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-60 ${
+          compact ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2 text-sm"
+        }`}
       >
-        <Download size={14} />
+        <Download size={compact ? 13 : 14} />
         Export
-        <ChevronDown size={14} />
+        <ChevronDown size={compact ? 13 : 14} />
       </button>
 
       {open && (

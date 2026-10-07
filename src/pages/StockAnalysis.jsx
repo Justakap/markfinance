@@ -9,6 +9,7 @@ const RSI_FIELDS = [
   "ema20",
   "ema75",
   "volAvg",
+  "vwap",
   "pe",
   "rsi",
   "prevRsi",

@@ -456,5 +456,41 @@ region scoped away from anything that opens a dropdown (e.g. only the
 control buttons, not search/export), not attempted here since it wasn't
 asked for.
 
+### 2026-10-07/08 — Compacted the Stock Analysis toolbar; added a VWAP column
+
+Scoped to Stock Analysis only, via new optional `compact` props (default
+`false`, so Greek's usage of these same shared components is byte-for-byte
+unchanged):
+- `StockSearchDropdown.jsx`, `WatchlistSelector.jsx`'s `controls`,
+  `TableExportMenu.jsx` all gained a `compact` prop that shrinks
+  padding/font-size/icon-size. `StockTable.jsx` passes `compact` to all
+  three and shrunk its own local toolbar controls (timeframe select,
+  Refresh/Analysis/Delete/Cancel buttons) the same way.
+- Table *data* typography was left at its original (non-reduced) size per
+  explicit request — only the toolbar/search/buttons got smaller, not the
+  stock names or table values.
+
+Added a **VWAP** column (`StockTableRow.jsx`/`StockTable.jsx`), positioned
+right after "RSI Chng", colored green/red based on price-vs-VWAP (same
+convention already used on the Greek page). No backend changes needed —
+`vwap` was already computed and returned in every market-data response
+(`computeEmasFromBundle` in `services/marketDataService.js`, same pipeline
+that already feeds `20 EMA`/`75 EMA`/`Vol Avg`); it just wasn't read by
+this table. Added `"vwap"` to `StockAnalysis.jsx`'s `RSI_FIELDS` so it also
+updates live via Socket.IO ticks, mirroring `GreekPage.jsx`'s
+`GREEK_FIELDS` (which already included it).
+
+Also: moved **PE** to right after VWAP (was previously the last column,
+after Vel/Price Vel); removed the separate **Change %** column and merged
+it into the LTP cell (LTP on top, change amount + percent in parentheses
+below, colored) using the existing `formatDailyChange()` helper from
+`utils/currency.js`. Net column count is unchanged (−1 Change% / +1 VWAP),
+so the table fits the viewport with no horizontal scroll needed.
+
+Verified: VWAP sorts correctly; CSV/XLSX/PDF export includes VWAP and PE
+in their new positions; Greek page confirmed completely unaffected (same
+VWAP values/coloring, untouched layout); zero console errors; production
+build compiles clean.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**

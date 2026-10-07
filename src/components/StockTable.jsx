@@ -166,10 +166,6 @@ const StockTable = ({
           valueA = quoteA?.price ?? quoteA?.ltp ?? 0;
           valueB = quoteB?.price ?? quoteB?.ltp ?? 0;
           break;
-        case "change":
-          valueA = quoteA?.change || 0;
-          valueB = quoteB?.change || 0;
-          break;
         case "volume":
           valueA = quoteA?.volume || 0;
           valueB = quoteB?.volume || 0;
@@ -212,6 +208,14 @@ const StockTable = ({
           valueA = rsiA?.change || 0;
           valueB = rsiB?.change || 0;
           break;
+        case "vwap":
+          valueA = quoteA?.vwap || 0;
+          valueB = quoteB?.vwap || 0;
+          break;
+        case "pe":
+          valueA = quoteA?.pe || 0;
+          valueB = quoteB?.pe || 0;
+          break;
         case "vel":
           valueA = getVelocityValue(quoteA);
           valueB = getVelocityValue(quoteB);
@@ -219,10 +223,6 @@ const StockTable = ({
         case "priceVel":
           valueA = getPriceVelocityValue(quoteA);
           valueB = getPriceVelocityValue(quoteB);
-          break;
-        case "pe":
-          valueA = quoteA?.pe || 0;
-          valueB = quoteB?.pe || 0;
           break;
         default:
           valueA = 0;
@@ -305,9 +305,10 @@ const StockTable = ({
           prevRsi: rsiData.prev != null ? Number(rsiData.prev).toFixed(2) : "--",
           rsiChange:
             rsiData.change != null ? Number(rsiData.change).toFixed(2) : "--",
+          vwap: quote?.vwap != null ? Number(quote.vwap).toFixed(2) : "--",
+          pe: quote?.pe != null ? Number(quote.pe).toFixed(2) : "--",
           vel: formatTrendLabel(getVelocityValue(quote)),
           priceVel: formatTrendLabel(getPriceVelocityValue(quote)),
-          pe: quote?.pe != null ? Number(quote.pe).toFixed(2) : "--",
         };
       }),
     [getQuote, rsiTimeframe, stocks],
@@ -328,9 +329,10 @@ const StockTable = ({
       { label: "RSI", value: "rsi" },
       { label: "Prev RSI", value: "prevRsi" },
       { label: "RSI Chng", value: "rsiChange" },
+      { label: "VWAP", value: "vwap" },
+      { label: "PE", value: "pe" },
       { label: "Vel", value: "vel" },
       { label: "Price Vel", value: "priceVel" },
-      { label: "PE", value: "pe" },
     ],
     [],
   );
@@ -461,12 +463,13 @@ const StockTable = ({
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[650px]">
           <div className="flex justify-between items-center gap-3 p-4 border-b border-gray-200">
             <StockSearchDropdown
+              compact
               selectedWatchlist={selectedWatchlist}
               watchlistStocks={allStocks}
               refreshWatchlist={refreshWatchlist}
               onRemoveStock={handleRemoveFromDropdown}
             />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {setSelectedWatchlist && watchlists && (
                 <WatchlistSelector
                   compact
@@ -482,19 +485,19 @@ const StockTable = ({
                     type="button"
                     onClick={deleteSelected}
                     disabled={deleting}
-                    className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-[13px] font-medium transition"
+                    className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg text-[13px] font-medium transition"
                   >
                     {deleting ? (
-                      <Loader2 size={16} className="animate-spin" />
+                      <Loader2 size={14} className="animate-spin" />
                     ) : (
-                      <Trash2 size={16} />
+                      <Trash2 size={14} />
                     )}
                     Delete ({selectedSymbols.size})
                   </button>
                   <button
                     type="button"
                     onClick={clearSelection}
-                    className="border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50"
+                    className="border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
                   </button>
@@ -503,7 +506,7 @@ const StockTable = ({
               <select
                 value={rsiTimeframe}
                 onChange={(e) => setRsiTimeframe(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-[13px] bg-white min-w-[110px]"
+                className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-[13px] bg-white min-w-[100px]"
               >
                 {RSI_TIMEFRAMES.map((tf) => (
                   <option key={tf.value} value={tf.value}>
@@ -515,10 +518,10 @@ const StockTable = ({
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={refreshing || loadingMarket}
-                className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="inline-flex items-center gap-2 border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 {refreshing ? (
-                  <Loader2 size={14} className="animate-spin" />
+                  <Loader2 size={13} className="animate-spin" />
                 ) : null}
                 Refresh
               </button>
@@ -527,13 +530,14 @@ const StockTable = ({
                   <button
                     type="button"
                     disabled
-                    className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-700 opacity-60"
+                    className="inline-flex items-center gap-2 border border-gray-300 px-2.5 py-1.5 rounded-lg text-[13px] text-gray-700 opacity-60"
                   >
                     Export
                   </button>
                 }
               >
                 <TableExportMenu
+                  compact
                   rows={exportRows}
                   columns={exportColumns}
                   filePrefix="Report"
@@ -543,7 +547,7 @@ const StockTable = ({
               <button
                 type="button"
                 onClick={() => setShowAnalysis(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium text-[14.5px] transition"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg font-medium text-[13px] transition"
               >
                 Analysis
               </button>
@@ -597,7 +601,6 @@ const StockTable = ({
                   {[
                     ["symbol", "Symbol"],
                     ["rate", "LTP"],
-                    ["change", "Change %"],
                     ["volume", "Volume"],
                     ["volAvg", "Vol Avg"],
                     ["acc", "VF"],
@@ -607,14 +610,15 @@ const StockTable = ({
                     ["rsi", "RSI"],
                     ["prevRsi", "Prev RSI"],
                     ["rsiChange", "RSI Chng"],
+                    ["vwap", "VWAP"],
+                    ["pe", "PE"],
                     ["vel", "Vel"],
                     ["priceVel", "Price Vel"],
-                    ["pe", "PE"],
                   ].map(([field, label]) => (
                     <th
                       key={field}
                       onClick={() => handleSort(field)}
-                      className="p-3 text-left text-[13px] font-semibold text-gray-700 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
+                      className="p-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
                     >
                       {label} {getSortIcon(field)}
                     </th>
