@@ -176,7 +176,7 @@ const StockTableRow = memo(function StockTableRow({
       <td className="p-3">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-blue-700">
+            <span className="font-medium text-blue-700 text-[14.5px]">
               {displaySymbol(stock.symbol)}
             </span>
             <span
@@ -185,35 +185,37 @@ const StockTableRow = memo(function StockTableRow({
               {stock.market}
             </span>
           </div>
-          <span className="text-xs text-gray-600">{stock.name}</span>
+          <span className="text-[11px] text-gray-600 truncate max-w-[180px]" title={stock.name}>
+            {stock.name}
+          </span>
         </div>
       </td>
-      <td className="p-3 text-gray-800 font-medium">
+      <td className="p-3 text-gray-800 font-medium text-[14.5px]">
         {formatPriceFromQuote(quote, stock)}
       </td>
       <td className={`p-3 whitespace-nowrap ${changeColor}`}>
         <div className="flex flex-col leading-snug">
-          <span className="text-sm font-semibold tabular-nums">
+          <span className="text-[13px] font-semibold tabular-nums">
             {formatChangeAmount(quote, stock)}
           </span>
-          <span className="text-[11px] font-medium tabular-nums opacity-80">
+          <span className="text-[10px] font-medium tabular-nums opacity-80">
             {formatChangePercent(quote)}
           </span>
         </div>
       </td>
-      <td className="p-3 text-gray-800 text-sm">
+      <td className="p-3 text-gray-800 text-[13px]">
         {formatIndianNumber(quote?.volume)}
       </td>
-      <td className="p-3 text-gray-800 text-sm">
+      <td className="p-3 text-gray-800 text-[13px]">
         {formatIndianNumber(quote?.volAvg)}
       </td>
-      <td className="p-3 text-gray-800 text-sm">
+      <td className="p-3 text-gray-800 text-[13px]">
         {acc != null ? acc.toFixed(2) : "--"}
       </td>
-      <td className="p-3 text-gray-800">{quote?.ema20 ?? "--"}</td>
-      <td className="p-3 text-gray-800">{quote?.ema75 ?? "--"}</td>
+      <td className="p-3 text-gray-800 text-[14.5px]">{quote?.ema20 ?? "--"}</td>
+      <td className="p-3 text-gray-800 text-[14.5px]">{quote?.ema75 ?? "--"}</td>
       <td
-        className={`p-3 font-semibold text-sm ${
+        className={`p-3 font-semibold text-[13px] ${
           isAboveDma == null
             ? "text-gray-500"
             : isAboveDma
@@ -223,10 +225,10 @@ const StockTableRow = memo(function StockTableRow({
       >
         {isAboveDma == null ? "--" : isAboveDma ? "Above" : "Below"}
       </td>
-      <td className="p-3 text-gray-800">{rsiData.rsi ?? "--"}</td>
-      <td className="p-3 text-gray-800">{rsiData.prev ?? "--"}</td>
+      <td className="p-3 text-gray-800 text-[14.5px]">{rsiData.rsi ?? "--"}</td>
+      <td className="p-3 text-gray-800 text-[14.5px]">{rsiData.prev ?? "--"}</td>
       <td
-        className={`p-3 font-semibold text-sm ${
+        className={`p-3 font-semibold text-[13px] ${
           (rsiData.change || 0) > 0 ? "text-green-600" : "text-red-600"
         }`}
       >
@@ -234,7 +236,7 @@ const StockTableRow = memo(function StockTableRow({
           ? `${rsiData.change > 0 ? "+" : ""}${Number(rsiData.change).toFixed(2)}`
           : "--"}
       </td>
-      <td className={`group relative p-3 text-sm font-semibold ${velocity.tone}`}>
+      <td className={`group relative p-3 text-[13px] font-semibold ${velocity.tone}`}>
         <span>{velocity.value}</span>
         <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-72 rounded-md border border-gray-200 bg-white p-2 text-[11px] shadow-lg group-hover:block">
           <div className="mb-2 grid grid-cols-[44px_1fr_1fr_1fr] items-center gap-2 border-b border-gray-100 pb-1 font-semibold text-gray-600">
@@ -283,7 +285,7 @@ const StockTableRow = memo(function StockTableRow({
           </div>
         </div>
       </td>
-      <td className={`group relative p-3 text-sm font-semibold ${priceVelocity.tone}`}>
+      <td className={`group relative p-3 text-[13px] font-semibold ${priceVelocity.tone}`}>
         <span>{priceVelocity.value}</span>
         <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-72 rounded-md border border-gray-200 bg-white p-2 text-[11px] shadow-lg group-hover:block">
           <div className="mb-2 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -336,7 +338,7 @@ const StockTableRow = memo(function StockTableRow({
           </div>
         </div>
       </td>
-      <td className="p-3 text-gray-800">
+      <td className="p-3 text-gray-800 text-[14.5px]">
         {quote?.pe != null ? Number(quote.pe).toFixed(2) : "--"}
       </td>
     </tr>

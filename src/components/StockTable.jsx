@@ -484,7 +484,7 @@ const StockTable = ({
                     type="button"
                     onClick={deleteSelected}
                     disabled={deleting}
-                    className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+                    className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-[13px] font-medium transition"
                   >
                     {deleting ? (
                       <Loader2 size={16} className="animate-spin" />
@@ -496,7 +496,7 @@ const StockTable = ({
                   <button
                     type="button"
                     onClick={clearSelection}
-                    className="border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-50"
+                    className="border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-600 hover:bg-gray-50"
                   >
                     Cancel
                   </button>
@@ -505,7 +505,7 @@ const StockTable = ({
               <select
                 value={rsiTimeframe}
                 onChange={(e) => setRsiTimeframe(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white min-w-[110px]"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-[13px] bg-white min-w-[110px]"
               >
                 {RSI_TIMEFRAMES.map((tf) => (
                   <option key={tf.value} value={tf.value}>
@@ -517,7 +517,7 @@ const StockTable = ({
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={refreshing || loadingMarket}
-                className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-700 hover:bg-gray-50 disabled:opacity-60"
               >
                 {refreshing ? (
                   <Loader2 size={14} className="animate-spin" />
@@ -529,7 +529,7 @@ const StockTable = ({
                   <button
                     type="button"
                     disabled
-                    className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm text-gray-700 opacity-60"
+                    className="inline-flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-[13px] text-gray-700 opacity-60"
                   >
                     Export
                   </button>
@@ -545,7 +545,7 @@ const StockTable = ({
               <button
                 type="button"
                 onClick={() => setShowAnalysis(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium transition"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg font-medium text-[14.5px] transition"
               >
                 Analysis
               </button>
@@ -616,7 +616,7 @@ const StockTable = ({
                     <th
                       key={field}
                       onClick={() => handleSort(field)}
-                      className="p-3 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
+                      className="p-3 text-left text-[13px] font-semibold text-gray-700 cursor-pointer hover:text-blue-600 select-none whitespace-nowrap"
                     >
                       {label} {getSortIcon(field)}
                     </th>

@@ -398,5 +398,42 @@ work; zero console errors; Greek/Dashboard confirmed unaffected (no
 duplicated badge); desktop (1470px) and narrow (834px) viewports both
 checked. `CI=true npx react-scripts build` compiles clean.
 
+### 2026-10-08 (later) — Fixed row-height "enlargement" on selection; ~10% more compact table typography
+
+Investigated a reported bug: selecting a stock in Stock Analysis appeared
+to make that row's text/height grow. Verified via `getComputedStyle`/
+`getBoundingClientRect` that `isSelected` never changed font-size, padding,
+or height anywhere (`StockTableRow.jsx` — it only ever toggles a background
+highlight class). The real cause: the company-name span (`stock.name`) had
+no width constraint, so a long name (e.g. "Container Corporation Of India
+Limited") wraps to 2-3 lines, making *that* row taller — independent of
+selection. The user had selected a long-named stock and compared it to a
+short-named unselected one, which looked like a selection-triggered bug but
+wasn't. Confirmed by setting a long name on an unselected stock and seeing
+its row grow regardless of selection, then fixed and reconfirmed identical
+height/font-size across selected and unselected rows.
+
+Fix: added `truncate max-w-[180px]` (plus a `title` attribute for the full
+name on hover) to the company-name span, so row height is constant
+regardless of name length — fixes the root cause rather than special-casing
+selection.
+
+Also reduced table/toolbar typography by ~10% (e.g. 16px -> 14.5px,
+14px -> 13px, 12px -> 11px) in `StockTableRow.jsx` and `StockTable.jsx`
+only — `StockSearchDropdown.jsx`, `WatchlistSelector.jsx`, and
+`TableExportMenu.jsx` were intentionally left untouched since they're
+shared with `GreekTable`, so Greek's toolbar is unaffected. The tiny
+NSE/BSE market-color badge (10px) was left unchanged — already at the edge
+of legibility.
+
+Verified: identical row height/font-size for selected vs. unselected rows;
+single/multi select, deselect, and Cancel all work; search/timeframe/
+Refresh/Export/Analysis unaffected; ~8 rows now visible vs. 7 before at the
+same viewport; zero console errors; desktop and narrow viewports checked.
+`CI=true npx react-scripts build` compiles clean. `react-scripts test`
+fails with a pre-existing `Cannot find module 'react-router/dom'` error in
+`App.test.js` — confirmed via `git stash` this is unrelated to this change
+(identical failure with the change removed).
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
