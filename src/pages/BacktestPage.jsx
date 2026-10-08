@@ -753,6 +753,13 @@ const BacktestPage = () => {
               </ResultBanner>
             )}
 
+            {results.backtestMeta?.corporateActionsNote && (
+              <ResultBanner tone="slate">
+                <p className="font-medium">Data quality note</p>
+                <p className="mt-1">{results.backtestMeta.corporateActionsNote}</p>
+              </ResultBanner>
+            )}
+
             {(results.summary?.totalTrades === 0 ||
               results.summary?.backtestHint) && (
               <ResultBanner tone="amber">
