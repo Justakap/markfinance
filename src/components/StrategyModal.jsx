@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { X, Plus } from "lucide-react";
+import { X, Plus, FolderPlus, Trash2 } from "lucide-react";
 
 const INDICATOR_GROUPS = [
   {
@@ -52,12 +52,81 @@ const ALL_SELECTABLE_INDICATORS = INDICATOR_GROUPS.filter((g) => !g.disabled).fl
   (g) => g.items,
 );
 
-const DEFAULT_ENTRY = {
+const DEFAULT_CONDITION = () => ({
+  type: "condition",
   indicator: "RSI (Daily)",
   operator: ">",
   compareType: "value",
   value: "",
-};
+});
+
+const emptyGroup = (operator = "AND") => ({
+  type: "group",
+  operator,
+  children: [],
+});
+
+const groupWithOneCondition = (operator = "AND") => ({
+  type: "group",
+  operator,
+  children: [DEFAULT_CONDITION()],
+});
+
+// --- Pure tree helpers (immutable; operate on plain {type,...} nodes) ---
+
+function updateAtPath(root, path, updater) {
+  if (path.length === 0) return updater(root);
+  const [head, ...rest] = path;
+  return {
+    ...root,
+    children: root.children.map((child, i) =>
+      i === head ? updateAtPath(child, rest, updater) : child,
+    ),
+  };
+}
+
+function removeAtPath(root, path) {
+  const parentPath = path.slice(0, -1);
+  const index = path[path.length - 1];
+  return updateAtPath(root, parentPath, (group) => ({
+    ...group,
+    children: group.children.filter((_, i) => i !== index),
+  }));
+}
+
+function addChildAtPath(root, path, child) {
+  return updateAtPath(root, path, (group) => ({
+    ...group,
+    children: [...group.children, child],
+  }));
+}
+
+/** Drops incomplete leaves and now-empty groups; returns null if nothing
+ *  usable remains (meaning "no expression" to the backend). */
+function pruneTree(node) {
+  if (!node) return null;
+
+  if (node.type === "condition") {
+    if (!node.indicator || !node.operator || node.value === "" || node.value == null) {
+      return null;
+    }
+    return {
+      type: "condition",
+      indicator: node.indicator,
+      operator: node.operator,
+      compareType: node.compareType || "value",
+      value: node.value,
+    };
+  }
+
+  if (node.type === "group") {
+    const children = (node.children || []).map(pruneTree).filter(Boolean);
+    if (!children.length) return null;
+    return { type: "group", operator: node.operator === "OR" ? "OR" : "AND", children };
+  }
+
+  return null;
+}
 
 export default function StrategyModal({
   isOpen,
@@ -68,15 +137,8 @@ export default function StrategyModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(false);
-  const [entryConditions, setEntryConditions] = useState([{ ...DEFAULT_ENTRY }]);
-  const [exitConditions, setExitConditions] = useState([
-    {
-      indicator: "RSI (Daily)",
-      operator: "<",
-      compareType: "value",
-      value: "",
-    },
-  ]);
+  const [entryTree, setEntryTree] = useState(groupWithOneCondition("AND"));
+  const [exitTree, setExitTree] = useState(groupWithOneCondition("AND"));
   const [stopLoss, setStopLoss] = useState("");
   const [target, setTarget] = useState("");
 
@@ -95,17 +157,46 @@ export default function StrategyModal({
     return "RSI (Daily)";
   }, []);
 
-  const normalizeConditions = useCallback((conditions = [], fallbackLogic = "AND") =>
-    conditions.map((condition, index) => ({
-      ...condition,
-      indicator: normalizeIndicator(condition.indicator),
-      compareType:
-        condition.compareType || (Number.isNaN(Number(condition.value)) ? "indicator" : "value"),
-      nextLogic:
-        index === conditions.length - 1
-          ? undefined
-          : condition.nextLogic || fallbackLogic,
-    })), [normalizeIndicator]);
+  const normalizeTreeNode = useCallback(
+    (node) => {
+      if (!node) return emptyGroup("AND");
+
+      if (node.type === "group") {
+        return {
+          type: "group",
+          operator: node.operator === "OR" ? "OR" : "AND",
+          children: (node.children || []).map(normalizeTreeNode),
+        };
+      }
+
+      return {
+        type: "condition",
+        indicator: normalizeIndicator(node.indicator),
+        operator: node.operator || ">",
+        compareType:
+          node.compareType || (Number.isNaN(Number(node.value)) ? "indicator" : "value"),
+        value: node.value ?? "",
+      };
+    },
+    [normalizeIndicator],
+  );
+
+  /** Legacy flat conditions -> a single-level group, exactly reproducing
+   *  the strategy's declared top-level `logic` (per-condition `nextLogic`
+   *  overrides aren't representable in the new uniform-operator-per-group
+   *  UI, so editing and re-saving a legacy strategy that mixed AND/OR
+   *  between individual pairs will collapse it to one operator — the
+   *  common case, a single uniform connector, round-trips exactly). */
+  const legacyConditionsToTree = useCallback((conditions = [], logic = "AND") => {
+    const children = (conditions || []).map((c) => ({
+      type: "condition",
+      indicator: c.indicator,
+      operator: c.operator,
+      compareType: c.compareType,
+      value: c.value,
+    }));
+    return { type: "group", operator: logic === "OR" ? "OR" : "AND", children };
+  }, []);
 
   useEffect(() => {
     if (editingStrategy) {
@@ -113,22 +204,20 @@ export default function StrategyModal({
       setDescription(editingStrategy.description || "");
       setAlertEnabled(editingStrategy.alertEnabled || false);
 
-      setEntryConditions(
-        normalizeConditions(
-          editingStrategy.entryConditions ||
-            editingStrategy.conditions || [{ ...DEFAULT_ENTRY }],
+      const entrySource =
+        editingStrategy.entryExpression ||
+        legacyConditionsToTree(
+          editingStrategy.entryConditions?.length
+            ? editingStrategy.entryConditions
+            : editingStrategy.conditions || [],
           editingStrategy.logic || "AND",
-        ),
-      );
+        );
+      setEntryTree(normalizeTreeNode(entrySource));
 
-      setExitConditions(
-        normalizeConditions(
-          Array.isArray(editingStrategy.exitConditions)
-            ? editingStrategy.exitConditions
-            : [],
-          editingStrategy.logic || "AND",
-        ),
-      );
+      const exitSource =
+        editingStrategy.exitExpression ||
+        legacyConditionsToTree(editingStrategy.exitConditions || [], editingStrategy.logic || "AND");
+      setExitTree(normalizeTreeNode(exitSource));
 
       setStopLoss(editingStrategy.stopLoss || "");
       setTarget(editingStrategy.target || "");
@@ -136,214 +225,38 @@ export default function StrategyModal({
       setName("");
       setDescription("");
       setAlertEnabled(false);
-      setEntryConditions([{ ...DEFAULT_ENTRY }]);
-      setExitConditions([
-        {
-          indicator: "RSI (Daily)",
-          operator: "<",
-          compareType: "value",
-          value: "",
-        },
-      ]);
+      setEntryTree(groupWithOneCondition("AND"));
+      setExitTree(groupWithOneCondition("AND"));
       setStopLoss("");
       setTarget("");
     }
-  }, [editingStrategy, isOpen, normalizeConditions]);
+  }, [editingStrategy, isOpen, normalizeTreeNode, legacyConditionsToTree]);
 
   if (!isOpen) return null;
 
-  const addCondition = (setter, conditions) => {
-    setter([
-      ...conditions.map((condition, index) =>
-        index === conditions.length - 1
-          ? { ...condition, nextLogic: condition.nextLogic || "AND" }
-          : condition,
-      ),
-      { ...DEFAULT_ENTRY },
-    ]);
-  };
-
-  const removeCondition = (index, conditions, setter) => {
-    if (conditions.length === 1) return;
-    setter(conditions.filter((_, i) => i !== index));
-  };
-
-  const updateCondition = (index, field, value, conditions, setter) => {
-    const updated = [...conditions];
-    updated[index][field] = value;
-    setter(updated);
-  };
-
-  const renderConditionRows = (
-    conditions,
-    setConditions,
-    removeHandler,
-    accent = "blue",
-  ) =>
-    conditions.map((condition, index) => (
-      <div key={index}>
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(8rem,10rem)_minmax(8rem,9rem)_minmax(0,1.2fr)_2rem] gap-2 items-center">
-          <select
-            value={condition.indicator}
-            onChange={(e) =>
-              updateCondition(
-                index,
-                "indicator",
-                e.target.value,
-                conditions,
-                setConditions,
-              )
-            }
-            className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
-          >
-            {INDICATOR_GROUPS.filter((g) => !g.disabled).map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.items.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-
-          <select
-            value={condition.operator}
-            onChange={(e) =>
-              updateCondition(
-                index,
-                "operator",
-                e.target.value,
-                conditions,
-                setConditions,
-              )
-            }
-            className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-2 text-sm font-semibold"
-          >
-            {OPERATORS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={condition.compareType || "value"}
-            onChange={(e) =>
-              updateCondition(
-                index,
-                "compareType",
-                e.target.value,
-                conditions,
-                setConditions,
-              )
-            }
-            className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-2 text-sm"
-          >
-            <option value="value">Value</option>
-            <option value="indicator">Indicator</option>
-          </select>
-
-          {condition.compareType === "indicator" ? (
-            <select
-              value={condition.value}
-              onChange={(e) =>
-                updateCondition(
-                  index,
-                  "value",
-                  e.target.value,
-                  conditions,
-                  setConditions,
-                )
-              }
-              className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
-            >
-              <option value="">Select Indicator</option>
-              {ALL_SELECTABLE_INDICATORS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <input
-              type="number"
-              value={condition.value}
-              onChange={(e) =>
-                updateCondition(
-                  index,
-                  "value",
-                  e.target.value,
-                  conditions,
-                  setConditions,
-                )
-              }
-              placeholder="Value"
-              className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
-            />
-          )}
-
-          {conditions.length > 1 && (
-            <button
-              type="button"
-              onClick={() => removeHandler(index)}
-              className="h-11 text-red-500 text-lg font-bold"
-            >
-              ×
-            </button>
-          )}
-        </div>
-
-        {index !== conditions.length - 1 && (
-          <div className="flex justify-center my-3">
-            <select
-              value={condition.nextLogic || "AND"}
-              onChange={(e) =>
-                updateCondition(
-                  index,
-                  "nextLogic",
-                  e.target.value,
-                  conditions,
-                  setConditions,
-                )
-              }
-              className={`bg-white border border-gray-200 px-3 py-1 rounded-md text-xs font-semibold ${
-                accent === "amber" ? "text-amber-700" : "text-blue-600"
-              }`}
-            >
-              <option value="AND">AND</option>
-              <option value="OR">OR</option>
-            </select>
-          </div>
-        )}
-      </div>
-    ));
-
   const handleSubmit = () => {
-    const cleanConditions = (conditions) =>
-      conditions
-        .filter((c) => c.indicator && c.operator && c.value !== "")
-        .map((condition, index, validConditions) => ({
-          ...condition,
-          nextLogic:
-            index === validConditions.length - 1
-              ? undefined
-              : condition.nextLogic || "AND",
-        }));
-
-    const validEntryConditions = cleanConditions(entryConditions);
-    const validExitConditions = cleanConditions(exitConditions);
-
     if (!name.trim()) return;
+
+    const prunedEntry = pruneTree(entryTree);
+    const prunedExit = pruneTree(exitTree);
 
     onSave({
       name,
       description,
-      entryConditions: validEntryConditions,
-      exitConditions: validExitConditions,
+      // Explicitly clear any legacy flat-list fields on every save made
+      // through this UI (rather than omitting them), so an older strategy
+      // edited here doesn't keep a stale legacy array alongside its new
+      // tree once entryExpression/exitExpression take over — see
+      // backend strategyExpression.js's getEntryExpression()/
+      // getExitExpression() precedence.
+      conditions: [],
+      entryConditions: [],
+      exitConditions: [],
+      entryExpression: prunedEntry,
+      exitExpression: prunedExit,
       stopLoss: Number(stopLoss) || 0,
       target: Number(target) || 0,
-      logic: "AND",
+      logic: prunedEntry?.operator || "AND",
       alertEnabled,
     });
 
@@ -391,36 +304,24 @@ export default function StrategyModal({
 
           <div className="border border-gray-200 rounded-xl p-4 bg-slate-50">
             <h3 className="font-semibold text-gray-800 mb-4">ENTRY CONDITIONS</h3>
-            {renderConditionRows(
-              entryConditions,
-              setEntryConditions,
-              (index) => removeCondition(index, entryConditions, setEntryConditions),
-            )}
-            <div
-              onClick={() => addCondition(setEntryConditions, entryConditions)}
-              className="mt-4 border-2 border-dashed border-gray-300 rounded-lg py-3 flex items-center justify-center gap-2 text-gray-500 hover:border-blue-500 hover:text-blue-600 cursor-pointer"
-            >
-              <Plus size={16} />
-              <span className="font-medium">Add Condition</span>
-            </div>
+            <ExpressionGroup
+              node={entryTree}
+              path={[]}
+              onChange={(updater) => setEntryTree((prev) => updater(prev))}
+              accent="blue"
+              depth={0}
+            />
           </div>
 
           <div className="border border-gray-200 rounded-xl p-4 bg-slate-50 mt-5">
             <h3 className="font-semibold text-gray-800 mb-4">EXIT CONDITIONS</h3>
-            {renderConditionRows(
-              exitConditions,
-              setExitConditions,
-              (index) =>
-                setExitConditions(exitConditions.filter((_, i) => i !== index)),
-              "amber",
-            )}
-            <div
-              onClick={() => addCondition(setExitConditions, exitConditions)}
-              className="mt-4 border-2 border-dashed border-gray-300 rounded-lg py-3 flex items-center justify-center gap-2 text-gray-500 hover:border-blue-500 hover:text-blue-600 cursor-pointer"
-            >
-              <Plus size={16} />
-              <span className="font-medium">Add Exit Condition</span>
-            </div>
+            <ExpressionGroup
+              node={exitTree}
+              path={[]}
+              onChange={(updater) => setExitTree((prev) => updater(prev))}
+              accent="amber"
+              depth={0}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4 mt-5">
@@ -472,6 +373,198 @@ export default function StrategyModal({
             {editingStrategy ? "Update Strategy" : "Save Strategy"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Two-way AND/OR segmented toggle for a group's operator. */
+function AndOrToggle({ value, onChange, accent }) {
+  const activeClass =
+    accent === "amber" ? "bg-amber-600 text-white" : "bg-blue-600 text-white";
+
+  return (
+    <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-xs font-semibold">
+      <button
+        type="button"
+        onClick={() => onChange("AND")}
+        className={`px-2.5 py-1 ${value !== "OR" ? activeClass : "bg-white text-gray-500"}`}
+      >
+        ALL (AND)
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("OR")}
+        className={`px-2.5 py-1 ${value === "OR" ? activeClass : "bg-white text-gray-500"}`}
+      >
+        ANY (OR)
+      </button>
+    </div>
+  );
+}
+
+function ConditionRow({ node, onUpdate, onRemove }) {
+  const update = (field, value) => onUpdate({ ...node, [field]: value });
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.2fr)_minmax(8rem,10rem)_minmax(8rem,9rem)_minmax(0,1.2fr)_2rem] gap-2 items-center">
+      <select
+        value={node.indicator}
+        onChange={(e) => update("indicator", e.target.value)}
+        className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
+      >
+        {INDICATOR_GROUPS.filter((g) => !g.disabled).map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.items.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+
+      <select
+        value={node.operator}
+        onChange={(e) => update("operator", e.target.value)}
+        className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-2 text-sm font-semibold"
+      >
+        {OPERATORS.map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+
+      <select
+        value={node.compareType || "value"}
+        onChange={(e) => update("compareType", e.target.value)}
+        className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-2 text-sm"
+      >
+        <option value="value">Value</option>
+        <option value="indicator">Indicator</option>
+      </select>
+
+      {node.compareType === "indicator" ? (
+        <select
+          value={node.value}
+          onChange={(e) => update("value", e.target.value)}
+          className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
+        >
+          <option value="">Select Indicator</option>
+          {ALL_SELECTABLE_INDICATORS.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="number"
+          value={node.value}
+          onChange={(e) => update("value", e.target.value)}
+          placeholder="Value"
+          className="w-full min-w-0 h-11 bg-white border border-gray-200 rounded-lg px-3 text-sm"
+        />
+      )}
+
+      <button
+        type="button"
+        onClick={onRemove}
+        className="h-11 text-red-500 text-lg font-bold"
+        title="Remove condition"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Recursive group editor. `path` is this group's location within the root
+ * tree (an array of child indices); `onChange(updater)` applies an
+ * immutable update to the ROOT tree via updateAtPath/removeAtPath/
+ * addChildAtPath, so every nesting level shares the same single source of
+ * truth without each level needing its own state.
+ */
+function ExpressionGroup({ node, path, onChange, accent, depth, onRemoveSelf }) {
+  const setOperator = (operator) => onChange((root) => updateAtPath(root, path, (g) => ({ ...g, operator })));
+
+  const updateChild = (index, updatedNode) =>
+    onChange((root) => updateAtPath(root, [...path, index], () => updatedNode));
+
+  const removeChild = (index) => onChange((root) => removeAtPath(root, [...path, index]));
+
+  const addCondition = () => onChange((root) => addChildAtPath(root, path, DEFAULT_CONDITION()));
+
+  const addGroup = () =>
+    onChange((root) =>
+      addChildAtPath(root, path, groupWithOneCondition(node.operator === "AND" ? "OR" : "AND")),
+    );
+
+  return (
+    <div className={depth > 0 ? "rounded-lg border border-gray-300 bg-white p-3" : ""}>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <AndOrToggle value={node.operator} onChange={setOperator} accent={accent} />
+          <span className="text-xs text-gray-500">must be true</span>
+        </div>
+        {depth > 0 && onRemoveSelf && (
+          <button
+            type="button"
+            onClick={onRemoveSelf}
+            className="text-red-500 hover:text-red-600"
+            title="Remove group"
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
+      </div>
+
+      {node.children.length === 0 && (
+        <p className="text-xs text-gray-400 italic mb-3">No conditions yet.</p>
+      )}
+
+      <div className="space-y-3">
+        {node.children.map((child, index) =>
+          child.type === "group" ? (
+            <ExpressionGroup
+              key={index}
+              node={child}
+              path={[...path, index]}
+              onChange={onChange}
+              accent={accent}
+              depth={depth + 1}
+              onRemoveSelf={() => removeChild(index)}
+            />
+          ) : (
+            <ConditionRow
+              key={index}
+              node={child}
+              onUpdate={(updated) => updateChild(index, updated)}
+              onRemove={() => removeChild(index)}
+            />
+          ),
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={addCondition}
+          className="border-2 border-dashed border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 text-gray-500 hover:border-blue-500 hover:text-blue-600 text-sm"
+        >
+          <Plus size={14} />
+          Add condition
+        </button>
+        <button
+          type="button"
+          onClick={addGroup}
+          className="border-2 border-dashed border-gray-300 rounded-lg px-3 py-2 flex items-center gap-2 text-gray-500 hover:border-blue-500 hover:text-blue-600 text-sm"
+        >
+          <FolderPlus size={14} />
+          Add group
+        </button>
       </div>
     </div>
   );

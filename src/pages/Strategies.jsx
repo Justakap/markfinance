@@ -37,9 +37,25 @@ const ConditionPill = ({ condition, connector }) => (
   </>
 );
 
+/** Flattens a Phase 2.2 expression tree into an ordered leaf list for the
+ *  compact pill display below — pairs each leaf with its immediate parent
+ *  group's operator. This simplifies nested bracket structure down to a
+ *  flat badge row (adequate for a summary card; the full tree is only
+ *  edited in StrategyModal), so a leaf's connector reflects "what its own
+ *  group requires," not global operator precedence. */
+const flattenExpression = (node, parentOperator = "AND") => {
+  if (!node) return [];
+  if (node.type === "condition") return [{ condition: node, operator: parentOperator }];
+  if (node.type === "group") {
+    return (node.children || []).flatMap((child) => flattenExpression(child, node.operator));
+  }
+  return [];
+};
+
 const scanModeBadge = (strategy) => {
   const hasExit =
     (strategy.exitConditions?.length || 0) > 0 ||
+    Boolean(strategy.exitExpression) ||
     Number(strategy.stopLoss) > 0 ||
     Number(strategy.target) > 0;
 
@@ -73,6 +89,24 @@ export default function Strategies() {
 
   const getConditionConnector = (condition, strategy) =>
     condition.nextLogic || strategy.logic || "AND";
+
+  /** entryExpression/exitExpression (Phase 2.2 tree) take precedence when
+   *  present, flattened for display; otherwise falls back to the legacy
+   *  flat-list + per-condition nextLogic, unchanged from before. */
+  const getDisplayEntries = (strategy, expression, legacyConditions) => {
+    if (expression) {
+      const leaves = flattenExpression(expression);
+      return leaves.map(({ condition, operator }, idx) => ({
+        condition,
+        connector: idx !== leaves.length - 1 ? operator : null,
+      }));
+    }
+    return legacyConditions.map((condition, idx) => ({
+      condition,
+      connector:
+        idx !== legacyConditions.length - 1 ? getConditionConnector(condition, strategy) : null,
+    }));
+  };
 
   const applyDefaultWatchlists = useCallback((list, wls) => {
     if (!wls.length || !list.length) return;
@@ -133,17 +167,25 @@ export default function Strategies() {
   }, [applyDefaultWatchlists, strategies, watchlists]);
 
   const createStrategy = async (data) => {
-    await axios.post(`${API_URL}/api/strategies`, {
-      ...data,
-      userId: user.mongoId,
-    });
-    fetchStrategies();
+    try {
+      await axios.post(`${API_URL}/api/strategies`, {
+        ...data,
+        userId: user.mongoId,
+      });
+      fetchStrategies();
+    } catch (error) {
+      showError(error?.response?.data?.message || "Failed to save strategy");
+    }
   };
 
   const updateStrategy = async (data) => {
-    await axios.put(`${API_URL}/api/strategies/${editingStrategy._id}`, data);
-    fetchStrategies();
-    setEditingStrategy(null);
+    try {
+      await axios.put(`${API_URL}/api/strategies/${editingStrategy._id}`, data);
+      fetchStrategies();
+      setEditingStrategy(null);
+    } catch (error) {
+      showError(error?.response?.data?.message || "Failed to save strategy");
+    }
   };
 
   const seedSampleStrategies = async () => {
@@ -386,15 +428,15 @@ export default function Strategies() {
                         Entry
                       </p>
                       <div className="flex flex-wrap items-center gap-1">
-                        {getEntryConditions(strategy).map((condition, idx) => (
+                        {getDisplayEntries(
+                          strategy,
+                          strategy.entryExpression,
+                          getEntryConditions(strategy),
+                        ).map(({ condition, connector }, idx) => (
                           <ConditionPill
                             key={`${strategy._id}-entry-${idx}`}
                             condition={condition}
-                            connector={
-                              idx !== getEntryConditions(strategy).length - 1
-                                ? getConditionConnector(condition, strategy)
-                                : null
-                            }
+                            connector={connector}
                           />
                         ))}
                       </div>
@@ -404,17 +446,17 @@ export default function Strategies() {
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
                         Exit
                       </p>
-                      {strategy.exitConditions?.length > 0 ? (
+                      {strategy.exitExpression || strategy.exitConditions?.length > 0 ? (
                         <div className="flex flex-wrap items-center gap-1">
-                          {strategy.exitConditions.map((condition, idx) => (
+                          {getDisplayEntries(
+                            strategy,
+                            strategy.exitExpression,
+                            strategy.exitConditions || [],
+                          ).map(({ condition, connector }, idx) => (
                             <ConditionPill
                               key={`${strategy._id}-exit-${idx}`}
                               condition={condition}
-                              connector={
-                                idx !== strategy.exitConditions.length - 1
-                                  ? getConditionConnector(condition, strategy)
-                                  : null
-                              }
+                              connector={connector}
                             />
                           ))}
                         </div>
