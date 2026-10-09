@@ -5,6 +5,7 @@ import {
   CandlestickChart,
   BarChart3,
   Settings,
+  FlaskConical,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -35,6 +36,11 @@ const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
       title: "Backtests",
       path: "/backtests",
       icon: BarChart3,
+    },
+    {
+      title: "Workspace",
+      path: "/workspace",
+      icon: FlaskConical,
     },
   ];
 

@@ -17,6 +17,10 @@ const GreekPage = lazy(() => import("./pages/GreekPage"));
 const Strategies = lazy(() => import("./pages/Strategies"));
 const BacktestPage = lazy(() => import("./pages/BacktestPage"));
 const BacktestsPage = lazy(() => import("./pages/BacktestsPage"));
+const StrategyWorkspace = lazy(() => import("./pro/pages/StrategyWorkspace"));
+const StrategyEditorPage = lazy(() => import("./pro/pages/StrategyEditorPage"));
+const BacktestResultsPage = lazy(() => import("./pro/pages/BacktestResultsPage"));
+const BacktestHistoryPage = lazy(() => import("./pro/pages/BacktestHistoryPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ValidationPage = lazy(() => import("./pages/ValidationPage"));
 const MetricsPage = lazy(() => import("./pages/MetricsPage"));
@@ -94,6 +98,39 @@ function App() {
             element={
               <ProtectedRoute>
                 <BacktestsPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/workspace"
+            element={
+              <ProtectedRoute>
+                <StrategyWorkspace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/strategies/:id"
+            element={
+              <ProtectedRoute>
+                <StrategyEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/backtests"
+            element={
+              <ProtectedRoute>
+                <BacktestHistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/backtests/:id"
+            element={
+              <ProtectedRoute>
+                <BacktestResultsPage />
               </ProtectedRoute>
             }
           />
