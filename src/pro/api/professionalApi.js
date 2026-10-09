@@ -100,10 +100,56 @@ export function getBacktestCandles(backtestResultId) {
   return apiFetch(`/api/v2/backtests/${backtestResultId}/candles`);
 }
 
+// --- Workstream J / L — Live Strategies ---
+
+export function activateLiveStrategy({
+  strategyId,
+  versionId,
+  symbol,
+  instrumentKey,
+  timeframe,
+  initialCapital,
+  commissionPct,
+  slippagePct,
+}) {
+  return apiFetch("/api/v2/live/activate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      strategyId,
+      versionId,
+      symbol,
+      instrumentKey,
+      timeframe,
+      initialCapital,
+      commissionPct,
+      slippagePct,
+    }),
+  });
+}
+
+export function deactivateLiveStrategy(runtimeId) {
+  return apiFetch(`/api/v2/live/${runtimeId}/deactivate`, { method: "POST" });
+}
+
+export function listLiveStrategies({ page = 1, limit = 20, status } = {}) {
+  const statusParam = status ? `&status=${status}` : "";
+  return apiFetch(`/api/v2/live?page=${page}&limit=${limit}${statusParam}`);
+}
+
+export function getLiveStrategyStatus(runtimeId) {
+  return apiFetch(`/api/v2/live/${runtimeId}`);
+}
+
+export function listLiveStrategySignals(runtimeId, { page = 1, limit = 20 } = {}) {
+  return apiFetch(`/api/v2/live/${runtimeId}/signals?page=${page}&limit=${limit}`);
+}
+
 // --- Workstream K — Alerts / Notifications ---
 
-export function listAlertConfigurations({ page = 1, limit = 20 } = {}) {
-  return apiFetch(`/api/v2/alert-configurations?page=${page}&limit=${limit}`);
+export function listAlertConfigurations({ page = 1, limit = 20, runtimeId } = {}) {
+  const runtimeParam = runtimeId ? `&runtimeId=${runtimeId}` : "";
+  return apiFetch(`/api/v2/alert-configurations?page=${page}&limit=${limit}${runtimeParam}`);
 }
 
 export function createAlertConfiguration({ runtimeId, eventTypes, enabled }) {

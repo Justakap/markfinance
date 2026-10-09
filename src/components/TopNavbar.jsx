@@ -6,6 +6,7 @@ import {
   BarChart3,
   Settings,
   FlaskConical,
+  Radio,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -42,6 +43,11 @@ const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
       title: "Workspace",
       path: "/workspace",
       icon: FlaskConical,
+    },
+    {
+      title: "Live",
+      path: "/workspace/live",
+      icon: Radio,
     },
   ];
 

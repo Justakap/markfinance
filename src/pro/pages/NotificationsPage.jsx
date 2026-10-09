@@ -169,6 +169,11 @@ export default function NotificationsPage() {
                   <p className="mt-0.5 text-xs text-gray-500">{n.body}</p>
                   <div className="mt-1 flex items-center gap-3 text-[11px] text-gray-400">
                     <span>{new Date(n.createdAt).toLocaleString()}</span>
+                    {n.runtimeId && (
+                      <Link to={`/workspace/live/${n.runtimeId}`} className="text-blue-600 hover:underline">
+                        View live strategy
+                      </Link>
+                    )}
                     {n.strategyId && (
                       <Link to={`/workspace/strategies/${n.strategyId}`} className="text-blue-600 hover:underline">
                         View strategy

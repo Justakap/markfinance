@@ -22,6 +22,9 @@ const StrategyEditorPage = lazy(() => import("./pro/pages/StrategyEditorPage"));
 const BacktestResultsPage = lazy(() => import("./pro/pages/BacktestResultsPage"));
 const BacktestHistoryPage = lazy(() => import("./pro/pages/BacktestHistoryPage"));
 const NotificationsPage = lazy(() => import("./pro/pages/NotificationsPage"));
+const LiveStrategiesPage = lazy(() => import("./pro/pages/LiveStrategiesPage"));
+const LiveActivationPage = lazy(() => import("./pro/pages/LiveActivationPage"));
+const LiveRuntimeDetailPage = lazy(() => import("./pro/pages/LiveRuntimeDetailPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ValidationPage = lazy(() => import("./pages/ValidationPage"));
 const MetricsPage = lazy(() => import("./pages/MetricsPage"));
@@ -140,6 +143,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <NotificationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/live"
+            element={
+              <ProtectedRoute>
+                <LiveStrategiesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/live/activate"
+            element={
+              <ProtectedRoute>
+                <LiveActivationPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/live/:runtimeId"
+            element={
+              <ProtectedRoute>
+                <LiveRuntimeDetailPage />
               </ProtectedRoute>
             }
           />
