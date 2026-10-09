@@ -166,7 +166,9 @@ export default function LiveActivationForm({ onActivated }) {
       <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
         Activating evaluates this strategy on a recurring basis against newly completed candles (the same
         polling-based candle workflow backtesting uses) — it does not execute tick by tick, and it never places a
-        real broker order. Positions and fills recorded here are simulated only.
+        real broker order. Positions and fills recorded here are simulated only. Simulated P&amp;L reflects only the
+        commission/slippage percentages below — it does not include STT, exchange transaction charges, GST, SEBI
+        turnover fees, or stamp duty.
       </div>
 
       <div>

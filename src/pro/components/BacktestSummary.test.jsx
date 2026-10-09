@@ -27,6 +27,8 @@ const SAMPLE_DATA_QUALITY = {
   historicalPeSupported: false,
   isDerivativeInstrument: false,
   cappedTimeframes: [],
+  tradingCostModelNote:
+    "Costs applied: commission 0.03% + slippage 0.05% (both symmetric, both sides). Does NOT include STT, exchange transaction charges, GST, SEBI turnover fees, or stamp duty — net P&L figures do not represent a real-world-complete cost accounting.",
 };
 
 describe("BacktestSummary", () => {
@@ -44,6 +46,17 @@ describe("BacktestSummary", () => {
     render(<BacktestSummary summary={SAMPLE_SUMMARY} dataQuality={SAMPLE_DATA_QUALITY} />);
     expect(screen.getByText(SAMPLE_DATA_QUALITY.corporateActionsNote)).toBeInTheDocument();
     expect(screen.getByText(SAMPLE_DATA_QUALITY.slTpAmbiguityPolicy)).toBeInTheDocument();
+  });
+
+  test("surfaces the trading-cost-model disclosure so net P&L is never implied to be real-world-complete (verification-pass audit)", () => {
+    render(<BacktestSummary summary={SAMPLE_SUMMARY} dataQuality={SAMPLE_DATA_QUALITY} />);
+    expect(screen.getByText(SAMPLE_DATA_QUALITY.tradingCostModelNote)).toBeInTheDocument();
+  });
+
+  test("omits the trading-cost-model note gracefully when a result predates it (no crash)", () => {
+    const olderDataQuality = { ...SAMPLE_DATA_QUALITY, tradingCostModelNote: undefined };
+    const { container } = render(<BacktestSummary summary={SAMPLE_SUMMARY} dataQuality={olderDataQuality} />);
+    expect(container).toBeInTheDocument();
   });
 
   test("missing/null metrics render as an em dash, never as NaN/undefined text", () => {

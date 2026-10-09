@@ -71,6 +71,9 @@ export default function BacktestSummary({ summary, dataQuality }) {
           <p className="font-medium text-slate-700">Data quality</p>
           <p>{dataQuality.corporateActionsNote}</p>
           <p>{dataQuality.slTpAmbiguityPolicy}</p>
+          {dataQuality.tradingCostModelNote && (
+            <p className="font-medium text-amber-700">{dataQuality.tradingCostModelNote}</p>
+          )}
           {!dataQuality.historicalPeSupported && <p>PE-based conditions are not available in this strategy system.</p>}
           {dataQuality.isDerivativeInstrument && <p>This instrument is a derivative — F&amp;O-specific modeling is not yet implemented.</p>}
           {dataQuality.cappedTimeframes?.length > 0 && (

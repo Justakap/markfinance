@@ -37,10 +37,11 @@ describe("LiveActivationForm", () => {
     professionalApi.getStrategyVersion.mockResolvedValue({ definition: { universe: { timeframe: "1d" } } });
   });
 
-  test("explicitly discloses polling-based evaluation and no real broker orders", async () => {
+  test("explicitly discloses polling-based evaluation, no real broker orders, and the incomplete cost model (verification-pass audit)", async () => {
     render(<LiveActivationForm onActivated={jest.fn()} />);
     expect(screen.getByText(/polling-based candle workflow/)).toBeInTheDocument();
     expect(screen.getByText(/never places a real broker order/)).toBeInTheDocument();
+    expect(screen.getByText(/does not include STT, exchange transaction charges, GST, SEBI/)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("RSI Mean Reversion")).toBeInTheDocument());
   });
 
