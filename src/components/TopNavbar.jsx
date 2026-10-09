@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
+import NotificationBell from "../pro/components/NotificationBell";
 
 const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
   const menuItems = [
@@ -113,6 +114,10 @@ const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
       )}
 
       <div className={showLive ? "pl-2" : "ml-auto pl-2"}>
+        <NotificationBell />
+      </div>
+
+      <div className="pl-2">
         <NavLink
           to="/settings"
           className={({ isActive }) =>

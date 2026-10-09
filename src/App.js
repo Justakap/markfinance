@@ -21,6 +21,7 @@ const StrategyWorkspace = lazy(() => import("./pro/pages/StrategyWorkspace"));
 const StrategyEditorPage = lazy(() => import("./pro/pages/StrategyEditorPage"));
 const BacktestResultsPage = lazy(() => import("./pro/pages/BacktestResultsPage"));
 const BacktestHistoryPage = lazy(() => import("./pro/pages/BacktestHistoryPage"));
+const NotificationsPage = lazy(() => import("./pro/pages/NotificationsPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const ValidationPage = lazy(() => import("./pages/ValidationPage"));
 const MetricsPage = lazy(() => import("./pages/MetricsPage"));
@@ -131,6 +132,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <BacktestResultsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/notifications"
+            element={
+              <ProtectedRoute>
+                <NotificationsPage />
               </ProtectedRoute>
             }
           />

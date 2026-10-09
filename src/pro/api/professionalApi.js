@@ -99,3 +99,49 @@ export function listBacktestTrades(backtestResultId, { skip = 0, limit = 200 } =
 export function getBacktestCandles(backtestResultId) {
   return apiFetch(`/api/v2/backtests/${backtestResultId}/candles`);
 }
+
+// --- Workstream K — Alerts / Notifications ---
+
+export function listAlertConfigurations({ page = 1, limit = 20 } = {}) {
+  return apiFetch(`/api/v2/alert-configurations?page=${page}&limit=${limit}`);
+}
+
+export function createAlertConfiguration({ runtimeId, eventTypes, enabled }) {
+  return apiFetch("/api/v2/alert-configurations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ runtimeId, eventTypes, enabled }),
+  });
+}
+
+/** `updates` may include `enabled` and/or `eventTypes` only — see
+ *  routes/alertRoutes.js's field allowlist. */
+export function updateAlertConfiguration(configId, updates) {
+  return apiFetch(`/api/v2/alert-configurations/${configId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}
+
+/** Archives (soft-deletes) a configuration — see alertConfigurationService.js. */
+export function archiveAlertConfiguration(configId) {
+  return apiFetch(`/api/v2/alert-configurations/${configId}`, { method: "DELETE" });
+}
+
+export function listNotifications({ page = 1, limit = 20, read } = {}) {
+  const readParam = read === undefined ? "" : `&read=${read}`;
+  return apiFetch(`/api/v2/notifications?page=${page}&limit=${limit}${readParam}`);
+}
+
+export function getUnreadNotificationCount() {
+  return apiFetch("/api/v2/notifications/unread-count");
+}
+
+export function markNotificationRead(notificationId) {
+  return apiFetch(`/api/v2/notifications/${notificationId}/read`, { method: "PUT" });
+}
+
+export function markAllNotificationsRead() {
+  return apiFetch("/api/v2/notifications/mark-all-read", { method: "POST" });
+}
