@@ -92,3 +92,10 @@ export function getBacktest(backtestResultId) {
 export function listBacktestTrades(backtestResultId, { skip = 0, limit = 200 } = {}) {
   return apiFetch(`/api/v2/backtests/${backtestResultId}/trades?skip=${skip}&limit=${limit}`);
 }
+
+/** Historical Candle Chart milestone — the OHLCV series for exactly the
+ *  instrument/timeframe/date-range this backtest ran against (not "today"
+ *  relative), so entry/exit markers always land inside the returned range. */
+export function getBacktestCandles(backtestResultId) {
+  return apiFetch(`/api/v2/backtests/${backtestResultId}/candles`);
+}

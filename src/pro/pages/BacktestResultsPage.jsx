@@ -93,7 +93,7 @@ export default function BacktestResultsPage() {
 
         <section className="rounded-xl border border-gray-200 p-4">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">PRICE CHART</h3>
-          <CandlestickChart />
+          <CandlestickChart backtestResultId={result._id} />
         </section>
 
         <section className="rounded-xl border border-gray-200 p-4">
