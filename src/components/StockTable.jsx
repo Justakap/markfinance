@@ -461,7 +461,7 @@ const StockTable = ({
   return (
     <>
       <div className="w-full px-6 mt-4">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col min-h-[650px]">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
           <div className="flex justify-between items-center gap-3 p-4 border-b border-gray-200">
             <StockSearchDropdown
               compact
