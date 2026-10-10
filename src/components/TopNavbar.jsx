@@ -5,7 +5,6 @@ import {
   CandlestickChart,
   BarChart3,
   Settings,
-  FlaskConical,
   Radio,
 } from "lucide-react";
 
@@ -31,18 +30,14 @@ const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
     },
     {
       title: "Strategies",
-      path: "/strategies",
+      path: "/workspace",
       icon: CandlestickChart,
+      end: true,
     },
     {
       title: "Backtests",
-      path: "/backtests",
+      path: "/workspace/backtests",
       icon: BarChart3,
-    },
-    {
-      title: "Workspace",
-      path: "/workspace",
-      icon: FlaskConical,
     },
     {
       title: "Live",
@@ -81,6 +76,7 @@ const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
             <NavLink
               key={item.path}
               to={item.path}
+              end={item.end}
               className={({ isActive }) =>
                 `
                 flex

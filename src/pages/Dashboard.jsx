@@ -118,13 +118,13 @@ const Dashboard = () => {
                 Watchlists
               </Link>
               <Link
-                to="/strategies"
+                to="/workspace"
                 className="border border-slate-200 hover:bg-slate-50 rounded-lg p-3 transition text-center"
               >
                 Strategies
               </Link>
               <Link
-                to="/backtests"
+                to="/workspace/backtests"
                 className="border border-slate-200 hover:bg-slate-50 rounded-lg p-3 transition text-center"
               >
                 Backtests
