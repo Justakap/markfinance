@@ -460,8 +460,8 @@ const StockTable = ({
 
   return (
     <>
-      <div className="w-full px-6 mt-4">
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+      <div className="w-full px-6 mt-4 pb-6 flex-1 flex flex-col">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden flex flex-col flex-1">
           <div className="flex justify-between items-center gap-3 p-4 border-b border-gray-200">
             <StockSearchDropdown
               compact
@@ -576,7 +576,7 @@ const StockTable = ({
 
           <div
             ref={scrollRef}
-            className="overflow-x-auto"
+            className="overflow-x-auto overflow-y-auto flex-1"
             style={
               useVirtual
                 ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }
