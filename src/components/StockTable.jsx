@@ -576,11 +576,7 @@ const StockTable = ({
 
           <div
             ref={scrollRef}
-            className={
-              useVirtual
-                ? "overflow-x-auto"
-                : "overflow-x-auto flex flex-col flex-1"
-            }
+            className="overflow-x-auto"
             style={
               useVirtual
                 ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }
@@ -588,7 +584,7 @@ const StockTable = ({
             }
             onScroll={useVirtual ? handleScroll : undefined}
           >
-            <table className={useVirtual ? "w-full" : "w-full grow shrink-0"}>
+            <table className="w-full">
               <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
                   {selectionMode && (
