@@ -246,7 +246,7 @@ const StockAnalysis = () => {
 
   return (
     <MainLayout lastUpdated={lastUpdated} showLive hideHeader>
-      <div className="min-h-[calc(100vh-4rem)] bg-gray-50 flex flex-col">
+      <div className="min-h-screen bg-gray-50">
         <StockTable
           selectedWatchlist={selectedWatchlist}
           setSelectedWatchlist={setSelectedWatchlist}
