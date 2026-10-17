@@ -576,7 +576,7 @@ const StockTable = ({
 
           <div
             ref={scrollRef}
-            className="overflow-x-auto overflow-y-auto flex-1"
+            className="overflow-x-auto"
             style={
               useVirtual
                 ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }
