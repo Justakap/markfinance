@@ -191,3 +191,78 @@ export function markNotificationRead(notificationId) {
 export function markAllNotificationsRead() {
   return apiFetch("/api/v2/notifications/mark-all-read", { method: "POST" });
 }
+
+/**
+ * Grid Trading Simulator — PAPER TRADING ONLY. /api/v2/grid-simulator/*.
+ * Nothing here ever places a real broker order.
+ */
+export function createGridSession({
+  symbol,
+  instrumentKey,
+  referencePrice,
+  gridInterval,
+  quantityPerLevel,
+  startingCapital,
+  maxPositionSize,
+  commissionPct,
+  slippagePct,
+}) {
+  return apiFetch("/api/v2/grid-simulator/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      symbol,
+      instrumentKey,
+      referencePrice,
+      gridInterval,
+      quantityPerLevel,
+      startingCapital,
+      maxPositionSize,
+      commissionPct,
+      slippagePct,
+    }),
+  });
+}
+
+export function listGridSessions({ page = 1, limit = 20, status } = {}) {
+  const statusParam = status ? `&status=${status}` : "";
+  return apiFetch(`/api/v2/grid-simulator/sessions?page=${page}&limit=${limit}${statusParam}`);
+}
+
+export function getGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}`);
+}
+
+export function startGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/start`, { method: "POST" });
+}
+
+export function pauseGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/pause`, { method: "POST" });
+}
+
+export function resumeGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/resume`, { method: "POST" });
+}
+
+export function stopGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/stop`, { method: "POST" });
+}
+
+export function listGridTrades(sessionId, { page = 1, limit = 50, skippedOnly = false } = {}) {
+  const skippedParam = skippedOnly ? "&skippedOnly=true" : "";
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/trades?page=${page}&limit=${limit}${skippedParam}`);
+}
+
+/** Lets the browser push a price it already has (e.g. from its own live
+ *  Socket.IO marketTick subscription) for lower latency than the backend's
+ *  own poll loop — purely an optional accelerant; the backend poller
+ *  (services/gridSimulatorFeed.js) is the fallback that keeps a session
+ *  progressing even with no tab open. */
+export function submitGridTick(sessionId, { price, eventTimestamp }) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/tick`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ price, eventTimestamp }),
+  });
+}

@@ -25,9 +25,10 @@ const NotificationsPage = lazy(() => import("./pro/pages/NotificationsPage"));
 const LiveStrategiesPage = lazy(() => import("./pro/pages/LiveStrategiesPage"));
 const LiveActivationPage = lazy(() => import("./pro/pages/LiveActivationPage"));
 const LiveRuntimeDetailPage = lazy(() => import("./pro/pages/LiveRuntimeDetailPage"));
+const GridSimulatorListPage = lazy(() => import("./pro/pages/GridSimulatorListPage"));
+const GridSimulatorCreatePage = lazy(() => import("./pro/pages/GridSimulatorCreatePage"));
+const GridSimulatorDetailPage = lazy(() => import("./pro/pages/GridSimulatorDetailPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
-const ValidationPage = lazy(() => import("./pages/ValidationPage"));
-const MetricsPage = lazy(() => import("./pages/MetricsPage"));
 
 function RouteFallback() {
   return (
@@ -172,6 +173,31 @@ function App() {
           />
 
           <Route
+            path="/workspace/grid"
+            element={
+              <ProtectedRoute>
+                <GridSimulatorListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/grid/new"
+            element={
+              <ProtectedRoute>
+                <GridSimulatorCreatePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/grid/:sessionId"
+            element={
+              <ProtectedRoute>
+                <GridSimulatorDetailPage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
             path="/settings"
             element={
               <ProtectedRoute>
@@ -179,28 +205,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {(process.env.REACT_APP_VALIDATION_MODE === "true" ||
-            process.env.NODE_ENV === "development") && (
-            <>
-              <Route
-                path="/validation"
-                element={
-                  <ProtectedRoute>
-                    <ValidationPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/metrics"
-                element={
-                  <ProtectedRoute>
-                    <MetricsPage />
-                  </ProtectedRoute>
-                }
-              />
-            </>
-          )}
         </Routes>
         </Suspense>
 
