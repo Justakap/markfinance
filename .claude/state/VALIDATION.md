@@ -778,3 +778,83 @@ configuration CRUD; notification read/unread/pagination; browser
 console/network inspection during an authenticated session. **These are
 exactly the areas the user should manually test first** — see the final
 report's manual-testing steps.
+
+---
+
+## 2026-10-18 — Grid Trading Simulator: final audit, push, deploy verification
+
+**Phase 1 — Independent adversarial audit** (separate sub-agent review,
+not the same pass that wrote the code). Found and fixed one real bug
+(trade-ledger `sequence` collision across multi-trade gap events — see
+PROGRESS.md's dated entry for full detail) plus two lower-severity
+issues (client-timestamp trust on the tick endpoint; a missing try/catch
+around the feed poll's bulk price-warm call). Three non-issues confirmed
+by the same review: `marketDataService.subscribe()` is never called
+anywhere in the new code (grep-confirmed); holdings can never go
+negative; `annotateRunningState` correctly replays mixed BUY/SELL
+sequences.
+
+**Phase 2 — Live verification against the real local backend + the
+real (shared, production) Atlas MongoDB**, per `backend/CLAUDE.md`'s own
+stated pattern for this repo (disposable test user/data, cleaned up
+after). Used a real minted JWT (not a mocked request) against the real
+locally-running server, including a genuine process kill-and-restart
+between the two test halves (not simulated):
+
+| Check | Result |
+|---|---|
+| Full lifecycle via real HTTP API (create → start → tick → pause → resume → stop) | All correct |
+| Genuine backend process restart mid-session | State (holdings/cash/avgCost/lock/trade history) survived intact, confirmed by direct Mongo read and by the API after restart |
+| Real concurrent `Promise.all` double-tick at the same crossing | At most one fill landed (MongoDB's own atomic `findOneAndUpdate`, not an in-process assumption) |
+| Repeated identical price (no crossing) | Zero trades, no duplicate fill |
+| Cannot restart a STOPPED session | 409, correctly terminal |
+| Duplicate active-session rejection, lifted once STOPPED | 409 then 201, correctly |
+| Ownership isolation (second user) | 404 on both GET and tick |
+| Invalid config / unauthenticated request | 400 / 401, not 500/404 |
+| Financial figures | Independently hand-recomputed from the raw fill log (cash/holdings/avgCost at every step) — matched the server's output exactly |
+| Cleanup | All test artifacts (2 users, 2 sessions, their trades) deleted; confirmed zero leftover documents afterward |
+
+Unplanned but valuable: the test session's own 5s poll loop kept
+evaluating it against REAL live Upstox GICRE quotes throughout the test
+window (including across the literal restart), producing a genuine
+`gapFill: true` multi-trade event from real market data — this
+incidentally proved the gap-fill path, the sequence-collision fix (no
+collisions across that real event), and restart recovery all work
+against production data, not just mocks.
+
+**Phase 3 — Final test/build re-run after fixes.** Backend: full suite
+passing (`npm test`, exit 0, includes 4 new regression tests this
+audit). Frontend: 102/102 real tests passing (`src/App.test.js`'s
+pre-existing BLOCKER-004 failure confirmed still isolated, unrelated).
+Both production builds (`CI=true npx react-scripts build` / backend
+`node -c app.js`) confirmed clean.
+
+**Phase 4 — Push.** Both repos reviewed for diff scope (no secrets, no
+unrelated files) before pushing — ordinary fast-forward, no force:
+- Backend: `bc4d577..681cab1` on `github.com/Justakap/markfinancebackend`.
+- Frontend: `c310114..6e31be2` on `github.com/Justakap/markfinance`
+  (includes two earlier same-session commits already reported: the
+  Stock Analysis table virtualization fix and the Grid Simulator feature
+  itself/Validation-Metrics nav removal).
+
+**Phase 5 — Hosted verification** (unauthenticated — no live Google/
+Firebase test account available in this environment):
+
+| Check | Result |
+|---|---|
+| Backend health (`GET /api/health`) | `{"ok":true,"database":"connected"}`, HTTP 200 |
+| New route exists in production (`GET /api/v2/grid-simulator/sessions`) | HTTP 401 ("Unauthorized"), **not** 404 — the just-pushed route code is what's running |
+| Frontend root loads | HTTP 200 |
+| Frontend SPA deep-link (`/workspace/grid` loaded directly) | HTTP 200 — Netlify's `_redirects` SPA fallback works for the new route |
+| Deployed bundle genuinely contains this audit's code | Downloaded every chunk listed in the live `asset-manifest.json` (32 files) and grepped: `"PAPER TRADING ONLY"` found in 3 chunks, grid-simulator markers (`"never places a real broker order"`, `"Grid Trading Simulator"`, `"grid-simulator"`) found across 14 chunks |
+| Frontend calls the correct backend URL | `markfinancebackend1.onrender.com` present in the main bundle; the obsolete no-"1" URL does not appear anywhere |
+| CORS — real origin allowed | `Origin: https://markfinance.netlify.app` → echoed back correctly |
+| CORS — untrusted origin rejected | `Origin: https://evil-example.com` → no `access-control-allow-origin` header |
+| No real broker orders placed | Trivially true — zero mutating requests against production during hosted verification (only GET/health/CORS checks); the disposable-test-user lifecycle test in Phase 2 ran against the LOCAL server, not production, and was fully cleaned up |
+| No production data mutated by this hosted check | Confirmed — GET-only against the live deployment |
+
+**NOT verified against the hosted deployment**: the actual logged-in
+browser workflow (create/start/pause/resume/stop a session through the
+real UI, watch the chart/ledger update, see stale-feed warnings) — no
+Firebase/Google OAuth test credentials in this environment. This is
+exactly what the user should manually test first; see the final report.
