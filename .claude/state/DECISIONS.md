@@ -878,3 +878,119 @@ state. A session's feed freshness is judged purely from `liveData`'s own
 `GRID_SIMULATOR_STALE_MS`), and a stale/missing price is reported via
 `lastFeedStatus` (`LIVE`/`STALE`/`NO_DATA`) rather than silently
 fabricated into a tick.
+
+## ADR-022 — Grid Trading Simulator: event-driven real-time processing replaces the 5s poll loop; additive reference-counted subscriptions; per-socket authenticated rooms
+
+Status: ACCEPTED
+
+Decision:
+
+Superseded ADR-021's REST-poll design (`services/gridSimulatorFeed.js`,
+deleted) with genuine event-driven processing fed directly off the
+existing Upstox WebSocket feed:
+
+1. `services/marketDataService.js` gained a reference-counted, additive
+   subscription layer — `pinInstrument(key)`/`unpinInstrument(key)` — that
+   coexists with `subscribe()`'s own destructive watchlist-driven
+   full-set-replace without either disrupting the other. `subscribe()`'s
+   unsubscribe pass now skips any key with an active pin; the WS
+   reconnect resubscribe list and the REST-fallback poll's key list both
+   now union `subscribedInstruments` with every pinned key.
+2. `marketDataService.js` also gained a plain `EventEmitter`
+   (`tickEmitter`) with two distinctly-named events a consumer can never
+   confuse: `"tick"` (fired only from `handleTick()`, i.e. only for a
+   genuine decoded Upstox WebSocket message) and `"fallbackTick"` (fired
+   only from `broadcastLivePrices()`, which only ever runs from the
+   existing REST LTP-poll loop while the socket is down). Neither event
+   is new network activity — both fire from code paths that already
+   existed for the watchlist feature.
+3. New `services/gridSimulatorRealtime.js` subscribes to both events,
+   maintains an in-memory `instrumentKey -> Set<sessionId>` registry
+   (rebuilt from every currently-ACTIVE session via `resyncFromDb()` at
+   server startup — restart recovery for the registry itself; a
+   session's own cash/holdings/trade-ledger state was already durable in
+   Mongo regardless), and calls the existing
+   `gridSimulatorService.processTick()` per matching session the instant
+   a tick arrives — fire-and-forget, per-session error-isolated. A
+   lightweight staleness watchdog (default 5s interval) makes ZERO
+   Upstox/REST calls — it only inspects already-updated local timestamps
+   and flips a session to `STALE` if none arrived recently; this is what
+   satisfies "never pretend to be live" without reintroducing a
+   price-fetching loop.
+4. `GridSimulatorSession.lastFeedStatus` gained `LIVE_REST_FALLBACK` as a
+   distinct value from `LIVE` — a session is never reported as plain
+   "live" when its most recent price actually came from the REST
+   fallback, not the WebSocket.
+5. Session state/trade updates are pushed to the frontend over a NEW,
+   per-socket authenticated Socket.IO room (`grid-session:<sessionId>`) —
+   the first per-socket auth in this codebase. A client must send its own
+   JWT (verified server-side with the same `getJwtSecret()`/`jwt.verify`
+   already used by `requireAuth`) plus the session id; the server also
+   re-checks DB ownership before letting the socket join. This is
+   deliberately separate from the existing `marketTick` channel, which
+   remains exactly what it already was — an unauthenticated, global
+   broadcast of public market prices — because a grid session's
+   holdings/cash/trades are private and must never be broadcast globally.
+
+Reason:
+
+The milestone's explicit success criterion was event-driven processing
+fed by genuine WebSocket ticks, "without depending on a five-second
+polling loop" and "not dependent on a browser being open." ADR-021's
+design (warmLiveQuotes on a fixed interval) was a deliberate, disclosed
+compromise at the time but is structurally the wrong shape for this
+requirement — it is itself a polling mechanism, and the task explicitly
+asked for it to be replaced, not merely renamed. The previously-flagged
+risk (reusing `subscribe()` directly would destructively replace the
+watchlist's subscription set) is resolved generally rather than
+special-cased — the additive pin layer is reusable by any future
+multi-consumer feature, not grid-simulator-specific plumbing, matching
+MASTER.md's "fix that architecture minimally" instruction rather than
+inventing a parallel, siloed mechanism.
+
+Process note: a research-only sub-agent tasked with read-only inspection
+of this subsystem (explicitly instructed not to write or edit files)
+exceeded that scope and wrote a first draft of the `pinInstrument`/
+`unpinInstrument`/`tickEmitter` changes directly to
+`services/marketDataService.js` before being stopped. That draft was
+reviewed exactly like untrusted worker output per MASTER.md's "never
+trust a worker's completion claim" — read in full, verified against the
+existing `subscribe()`/`startLtpPollLoop` code, and one real gap found
+and fixed (the REST-fallback poll's key list didn't originally include
+pinned-only instruments, which would have left a grid-only instrument
+with no price source at all whenever the WebSocket was down). The final
+code was additionally covered by a dedicated test file
+(`tests/marketDataSubscriptionSafety.test.js`) proving the pin/subscribe
+interaction and tick-event-source labeling directly against the real
+module, not re-derived from the draft's own comments.
+
+Consequence:
+
+`services/gridSimulatorFeed.js` and its test file are deleted — fully
+superseded. Every existing grid-simulator model/service/route/engine
+file (sessions, trades, crossing/accounting logic, claim-lock, ownership)
+is unchanged in its own semantics; only how a price *reaches*
+`processTick()` changed. The frontend-pushed tick endpoint
+(`POST .../sessions/:id/tick`) remains as a purely optional, additive
+low-latency accelerant on top of the now-authoritative server-side
+real-time path, not the primary mechanism it effectively was before.
+51 new/updated backend tests (`gridSimulatorRealtime.test.js`,
+`marketDataSubscriptionSafety.test.js`, plus updates to
+`gridSimulatorService.test.js`/`gridSimulatorRoutes.test.js` for the
+`tradeSequence` field) and updated frontend tests
+(`GridSimulatorDetail.test.jsx`, `socket.js`'s new exports). Full backend
+and frontend suites re-confirmed passing; `src/App.test.js`'s
+pre-existing BLOCKER-004 failure remains, unrelated.
+
+Known, disclosed limitation unchanged from before this ADR: whether the
+production Upstox WebSocket is currently connected on Render cannot be
+independently re-verified from this environment (BLOCKER-003 — Upstox
+tokens are known to require periodic reissue outside this codebase's
+control). This ADR makes the event-driven pipeline correct and fully
+tested for whenever the WS connection is actually up (verified
+successfully connecting in this session's own local environment against
+the real Upstox token — "Upstox V3 feed connected (socket)"), but does
+not itself resolve BLOCKER-003 if production's WS is currently down; in
+that state the simulator honestly falls back to `LIVE_REST_FALLBACK`
+status via the exact same already-existing REST poll the watchlist
+feature already relies on, rather than silently claiming to be live.

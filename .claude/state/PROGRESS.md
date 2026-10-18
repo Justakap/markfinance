@@ -781,3 +781,73 @@ deprecation warning ("the `new` option for findOneAndUpdate() is
 deprecated") surfaced on this backend restart — the `{new: true}` idiom
 predates this feature (`liveStrategyOrchestrator.js` already uses it);
 out of scope to change project-wide here.
+
+### 2026-10-19 — Grid Trading Simulator: real-time Socket.IO processing replaces 5s polling (ADR-022)
+
+**Status: DONE, NOT PUSHED — awaiting explicit authorization per this
+task's own instruction.** Full detail in ADR-022 (`DECISIONS.md`). Short
+version: `services/gridSimulatorFeed.js`'s dedicated 5-second poll loop
+is deleted, replaced by genuine event-driven processing fed by
+`marketDataService.js`'s existing Upstox WebSocket feed. New additive,
+reference-counted `pinInstrument()`/`unpinInstrument()` subscription
+layer (never disrupts, or is disrupted by, the watchlist feature's own
+`subscribe()`); a new `tickEmitter` distinguishing genuine WS ticks
+(`"tick"`) from REST-fallback-sourced prices (`"fallbackTick"`) —
+neither is new network activity, both reuse existing code paths. New
+`services/gridSimulatorRealtime.js` processes a tick the instant it
+arrives (not on a timer), with a lightweight, zero-network-call
+staleness watchdog. New authenticated, ownership-verified per-socket
+Socket.IO room (`grid-session:<sessionId>`) delivers private
+session/trade updates — the first per-socket auth in this codebase,
+deliberately separate from the existing unauthenticated global
+`marketTick` broadcast.
+
+**Process anomaly, handled, worth recording**: a read-only research
+sub-agent exceeded its instructed scope and wrote a first draft of the
+`marketDataService.js` changes before being stopped mid-edit. Reviewed
+exactly like untrusted worker output (MASTER.md's "never trust a
+worker's completion claim") rather than accepted as-is — one real gap
+found and fixed (REST-fallback poll didn't originally cover pinned-only
+instruments), then independently covered by a dedicated test file
+exercising the real module. See ADR-022 for the full account.
+
+**Unplanned real-world validation**: while boot-testing locally against
+the real (shared, production) Atlas database, a currently-ACTIVE session
+belonging to an actual user (not a test artifact) was discovered —
+genuine evidence the deployed Grid Simulator is already being used in
+production. The local process briefly participated in processing that
+session's real ticks via the new code path during its ~15s uptime; the
+session's `processingLockedUntil`/state were verified clean and
+uncorrupted afterward (no stuck lock, valid status, internally
+consistent cash/holdings), and the local server was stopped immediately
+once this was noticed, specifically to avoid continued unintended
+interference with a real user's live session while this work is still
+pending authorization to deploy. No test data was created or deleted in
+or near this session — it was left completely untouched.
+
+**Tests**: 11 new (`gridSimulatorRealtime.test.js`, covering the
+required-tests list items 1-7/10/11/13/14 from the task) + 9 new
+(`marketDataSubscriptionSafety.test.js`, pin/subscribe interaction +
+tick-event-source labeling against the real module, not mocks) + updates
+to `gridSimulatorService.test.js`/`gridSimulatorRoutes.test.js` for the
+new `tradeSequence` field + 4 new/updated frontend tests
+(`GridSimulatorDetail.test.jsx` — real-time merge, cross-session
+isolation, reconnect reconciliation, unmount listener cleanup). Full
+backend suite and full frontend suite (106 real tests;
+`src/App.test.js`'s pre-existing BLOCKER-004 failure unchanged) both
+re-confirmed passing. Both production builds confirmed clean.
+
+**Verified directly** (not just unit-tested): the real Upstox WebSocket
+feed successfully connects in this local environment with the real
+access token ("Upstox V3 feed connected (socket)") — confirming the
+event-driven pipeline has a genuine upstream source to react to here.
+**NOT independently re-verifiable from this environment**: whether
+production's WebSocket connection on Render is currently up (BLOCKER-003,
+pre-existing, Upstox-token-reissue-related, unchanged by this work) — no
+Render log/shell access available. If production's WS happens to be
+down, the simulator will correctly and honestly report
+`LIVE_REST_FALLBACK` rather than claim to be live, via the exact same
+REST fallback the watchlist feature already depends on in that state.
+
+**Not pushed.** Per this task's explicit instruction, local commits only
+until the user authorizes the push/deploy step.

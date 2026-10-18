@@ -83,6 +83,69 @@ export function onMarketTick(callback) {
   };
 }
 
+/**
+ * Grid Trading Simulator (PAPER TRADING ONLY) — joins the authenticated,
+ * ownership-verified Socket.IO room for one session (backend verifies the
+ * JWT + that this session belongs to that user before letting the socket
+ * join; see app.js's `subscribeGridSession` handler). This is NOT the
+ * same channel as `marketTick` — that's a public, unauthenticated price
+ * broadcast; this one carries a session's private holdings/cash/trades,
+ * so it is deliberately never broadcast globally.
+ *
+ * Re-joins automatically on every reconnect (a fresh connection has no
+ * memory of previously-joined rooms), and the caller should always follow
+ * a join with a one-time REST reload to reconcile anything that happened
+ * while disconnected — this function alone does not replay missed events.
+ */
+export function joinGridSession(sessionId) {
+  const marketSocket = getMarketSocket();
+  const token = localStorage.getItem("token");
+
+  const join = () => {
+    if (token) marketSocket.emit("subscribeGridSession", { sessionId, token });
+  };
+
+  join();
+  marketSocket.on("connect", join);
+
+  return () => {
+    marketSocket.off("connect", join);
+    marketSocket.emit("unsubscribeGridSession", { sessionId });
+  };
+}
+
+export function onGridSimulatorUpdate(callback) {
+  const marketSocket = getMarketSocket();
+  const wrapped = (payload) => callback(payload);
+  marketSocket.on("gridSimulatorUpdate", wrapped);
+  return () => {
+    marketSocket.off("gridSimulatorUpdate", wrapped);
+  };
+}
+
+/** Connected / reconnecting / disconnected — for an honest status badge.
+ *  Never infer "live" from this alone; it only means the Socket.IO
+ *  transport itself is up, not that any genuine market tick has arrived
+ *  (see the session's own `lastFeedStatus` for that). */
+export function onSocketConnectionChange(callback) {
+  const marketSocket = getMarketSocket();
+  const onConnect = () => callback("connected");
+  const onDisconnect = () => callback("disconnected");
+  const onReconnectAttempt = () => callback("reconnecting");
+
+  marketSocket.on("connect", onConnect);
+  marketSocket.on("disconnect", onDisconnect);
+  marketSocket.io.on("reconnect_attempt", onReconnectAttempt);
+
+  callback(marketSocket.connected ? "connected" : "disconnected");
+
+  return () => {
+    marketSocket.off("connect", onConnect);
+    marketSocket.off("disconnect", onDisconnect);
+    marketSocket.io.off("reconnect_attempt", onReconnectAttempt);
+  };
+}
+
 // Legacy API - for backward compatibility
 export function onStockUpdate(callback) {
   const marketSocket = getMarketSocket();

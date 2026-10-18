@@ -9,17 +9,36 @@ import {
   submitGridTick,
 } from "../api/professionalApi";
 import { showError, showSuccess, confirmAction } from "../../utils/toast";
-import { onMarketTick } from "../../utils/socket";
+import { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } from "../../utils/socket";
 import GridLevelsChart from "./GridLevelsChart";
 
-const POLL_MS = 5000;
+// Backstop reconciliation only — the real update path is Socket.IO
+// (onGridSimulatorUpdate). This exists purely to recover from an event
+// silently missed without a detectable disconnect; it is deliberately
+// infrequent, not the primary mechanism.
+const RECONCILE_POLL_MS = 30000;
 const TRADE_PAGE_SIZE = 25;
 
 const FEED_BADGE = {
   LIVE: "bg-green-100 text-green-700",
+  LIVE_REST_FALLBACK: "bg-amber-100 text-amber-700",
   STALE: "bg-amber-100 text-amber-700",
   NO_DATA: "bg-red-100 text-red-700",
   UNKNOWN: "bg-gray-100 text-gray-500",
+};
+
+const FEED_LABEL = {
+  LIVE: "Live (WebSocket)",
+  LIVE_REST_FALLBACK: "Live (REST fallback)",
+  STALE: "Stale",
+  NO_DATA: "No data",
+  UNKNOWN: "Unknown",
+};
+
+const CONNECTION_BADGE = {
+  connected: "bg-green-100 text-green-700",
+  reconnecting: "bg-amber-100 text-amber-700",
+  disconnected: "bg-red-100 text-red-700",
 };
 
 function fmt(value, digits = 2) {
@@ -31,11 +50,20 @@ function fmt(value, digits = 2) {
  * summary, grid chart, trade ledger, skipped/partial fills, lifecycle
  * controls. Router-free (no `Link`/`useNavigate`) — ADR-017 convention.
  *
- * Pushes the session's own instrument's live Socket.IO ticks (the exact
- * same `marketTick` subscription StockAnalysis/GreekPage already use) to
- * POST .../tick for lower-latency updates than the backend's own 5s poll
- * loop — purely an optional accelerant; both paths are idempotent and the
- * backend poller is the fallback if no tab is open.
+ * Live updates arrive over the authenticated `grid-session:<sessionId>`
+ * Socket.IO room (joinGridSession/onGridSimulatorUpdate) — the backend's
+ * event-driven real-time processor (services/gridSimulatorRealtime.js)
+ * pushes a state/trade update the moment it processes a genuine Upstox
+ * WebSocket tick, never a global broadcast of this session's private
+ * data. The browser ALSO still pushes its own already-open `marketTick`
+ * ticks to POST .../tick as an optional, purely additive low-latency
+ * accelerant — the backend path is authoritative regardless, and the
+ * server-side real-time processor keeps working with zero browser tabs
+ * open at all.
+ *
+ * A 30s reconciliation poll and a REST reload on every socket reconnect
+ * are the backstop against a silently-missed event — Socket.IO is the
+ * primary path, not the only one state can ever come from.
  */
 export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [session, setSession] = useState(null);
@@ -45,8 +73,11 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionPending, setActionPending] = useState(false);
+  const [connectionState, setConnectionState] = useState("disconnected");
   const lastTickSentRef = useRef(0);
   const mountedRef = useRef(true);
+  const skippedOnlyRef = useRef(skippedOnly);
+  skippedOnlyRef.current = skippedOnly;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -79,10 +110,59 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   useEffect(() => {
     setLoading(true);
     load();
-    const timer = setInterval(load, POLL_MS);
+    const timer = setInterval(load, RECONCILE_POLL_MS);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, skippedOnly]);
+
+  // Primary live-update path: the authenticated Socket.IO room for this
+  // session. Merges each push directly into state — no REST round trip
+  // needed per update.
+  useEffect(() => {
+    const leave = joinGridSession(sessionId);
+
+    const unsubscribeUpdate = onGridSimulatorUpdate((payload) => {
+      if (!mountedRef.current || payload?.sessionId !== sessionId) return;
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: payload.status ?? prev.status,
+              lastFeedStatus: payload.lastFeedStatus ?? prev.lastFeedStatus,
+              lastFeedCheckAt: payload.lastFeedCheckAt ?? prev.lastFeedCheckAt,
+              lastFeedPrice: payload.lastFeedPrice ?? prev.lastFeedPrice,
+              state: { ...prev.state, ...payload.state },
+              portfolio: { ...prev.portfolio, ...payload.portfolio },
+            }
+          : prev,
+      );
+      if (payload.trades?.length) {
+        const relevant = payload.trades.filter((t) => !skippedOnlyRef.current || t.qtySkipped > 0);
+        if (relevant.length) {
+          setTrades((prev) => [...relevant].reverse().concat(prev).slice(0, TRADE_PAGE_SIZE));
+          setTradesTotal((prev) => prev + relevant.length);
+        }
+      }
+    });
+
+    // Reconnecting loses no state on its own, but anything that happened
+    // while disconnected needs a REST catch-up — never left silently
+    // inconsistent.
+    const unsubscribeConnection = onSocketConnectionChange((state) => {
+      if (!mountedRef.current) return;
+      setConnectionState((prev) => {
+        if (prev !== "connected" && state === "connected") load();
+        return state;
+      });
+    });
+
+    return () => {
+      leave();
+      unsubscribeUpdate();
+      unsubscribeConnection();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   useEffect(() => {
     if (!session || session.status !== "ACTIVE") return undefined;
@@ -147,11 +227,14 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CONNECTION_BADGE[connectionState] || CONNECTION_BADGE.disconnected}`}>
+            {connectionState === "connected" ? "Connected" : connectionState === "reconnecting" ? "Reconnecting…" : "Disconnected"}
+          </span>
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${FEED_BADGE[lastFeedStatus] || FEED_BADGE.UNKNOWN}`}>
-            Feed: {lastFeedStatus || "UNKNOWN"}
+            {FEED_LABEL[lastFeedStatus] || "Unknown"}
           </span>
           <span className="text-xs text-gray-400">
-            {lastFeedCheckAt ? `checked ${new Date(lastFeedCheckAt).toLocaleTimeString()}` : "no check yet"}
+            {lastFeedCheckAt ? `updated ${new Date(lastFeedCheckAt).toLocaleTimeString()}` : "no update yet"}
           </span>
         </div>
         <div className="flex gap-2">
@@ -220,7 +303,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
               </thead>
               <tbody>
                 {trades.map((trade) => (
-                  <tr key={trade.tradeId} className="border-t border-gray-100">
+                  <tr key={trade.tradeId || `seq-${trade.sequence}`} className="border-t border-gray-100">
                     <td className={`p-2 font-medium ${trade.type === "BUY" ? "text-green-700" : "text-red-700"}`}>{trade.type}</td>
                     <td className="p-2">
                       {trade.levelPrice}

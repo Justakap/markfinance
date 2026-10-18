@@ -9,9 +9,15 @@ jest.mock("../../utils/toast", () => ({
   showSuccess: jest.fn(),
   confirmAction: jest.fn(),
 }));
-jest.mock("../../utils/socket", () => ({ onMarketTick: jest.fn(() => jest.fn()) }));
+jest.mock("../../utils/socket", () => ({
+  onMarketTick: jest.fn(),
+  joinGridSession: jest.fn(),
+  onGridSimulatorUpdate: jest.fn(),
+  onSocketConnectionChange: jest.fn(),
+}));
 
 const { confirmAction } = require("../../utils/toast");
+const { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } = require("../../utils/socket");
 
 function sessionDetail(overrides = {}) {
   return {
@@ -33,6 +39,13 @@ describe("GridSimulatorDetail", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     professionalApi.listGridTrades.mockResolvedValue({ items: [], total: 0 });
+    onMarketTick.mockReturnValue(jest.fn());
+    joinGridSession.mockReturnValue(jest.fn());
+    onGridSimulatorUpdate.mockReturnValue(jest.fn());
+    onSocketConnectionChange.mockImplementation((callback) => {
+      callback("connected");
+      return jest.fn();
+    });
   });
 
   test("loading state renders before the first response resolves", () => {
@@ -55,7 +68,8 @@ describe("GridSimulatorDetail", () => {
 
     await waitFor(() => expect(screen.getByText("GICRE")).toBeInTheDocument());
     expect(screen.getByText(/PAPER TRADING ONLY/)).toBeInTheDocument();
-    expect(screen.getByText("Feed: LIVE")).toBeInTheDocument();
+    expect(screen.getByText("Live (WebSocket)")).toBeInTheDocument();
+    expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.getByText("₹336.00")).toBeInTheDocument(); // avgCost
     unmount();
   });
@@ -114,5 +128,88 @@ describe("GridSimulatorDetail", () => {
     fireEvent.click(screen.getByText(/Back to sessions/));
     expect(onBack).toHaveBeenCalled();
     unmount();
+  });
+
+  test("a gridSimulatorUpdate push merges directly into state without a REST round trip", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    let pushUpdate;
+    onGridSimulatorUpdate.mockImplementation((callback) => {
+      pushUpdate = callback;
+      return jest.fn();
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    const callsBefore = professionalApi.getGridSession.mock.calls.length;
+
+    pushUpdate({
+      sessionId: "s1",
+      status: "ACTIVE",
+      lastFeedStatus: "LIVE",
+      lastFeedCheckAt: new Date().toISOString(),
+      lastFeedPrice: 345,
+      state: { lastPrice: 345, lastEventTimestamp: new Date().toISOString(), sequence: 2 },
+      portfolio: { cash: 60000, holdings: 200, avgCost: 340, realizedPnL: 0 },
+      trades: [{ type: "BUY", level: -2, levelPrice: 334, fillPrice: 333, qtyFilled: 100, qtySkipped: 0, sequence: 2, eventTimestamp: new Date().toISOString() }],
+    });
+
+    await waitFor(() => expect(screen.getByText("200")).toBeInTheDocument()); // holdings
+    expect(professionalApi.getGridSession.mock.calls.length).toBe(callsBefore); // no extra REST fetch for this push
+    unmount();
+  });
+
+  test("ignores a gridSimulatorUpdate for a different session id", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    let pushUpdate;
+    onGridSimulatorUpdate.mockImplementation((callback) => {
+      pushUpdate = callback;
+      return jest.fn();
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+
+    pushUpdate({ sessionId: "some-other-session", portfolio: { holdings: 999 } });
+    expect(screen.queryByText("999")).not.toBeInTheDocument();
+    unmount();
+  });
+
+  test("reconnecting triggers a reconciliation reload", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    let pushConnectionState;
+    onSocketConnectionChange.mockImplementation((callback) => {
+      pushConnectionState = callback;
+      callback("disconnected");
+      return jest.fn();
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    const callsBefore = professionalApi.getGridSession.mock.calls.length;
+
+    pushConnectionState("connected");
+    await waitFor(() => expect(professionalApi.getGridSession.mock.calls.length).toBeGreaterThan(callsBefore));
+    unmount();
+  });
+
+  test("unmounting cleans up the socket room join and listeners", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    const leaveSpy = jest.fn();
+    const unsubUpdateSpy = jest.fn();
+    const unsubConnectionSpy = jest.fn();
+    joinGridSession.mockReturnValue(leaveSpy);
+    onGridSimulatorUpdate.mockReturnValue(unsubUpdateSpy);
+    onSocketConnectionChange.mockImplementation((callback) => {
+      callback("connected");
+      return unsubConnectionSpy;
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    unmount();
+
+    expect(leaveSpy).toHaveBeenCalled();
+    expect(unsubUpdateSpy).toHaveBeenCalled();
+    expect(unsubConnectionSpy).toHaveBeenCalled();
   });
 });

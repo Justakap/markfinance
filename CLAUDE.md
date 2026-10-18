@@ -524,5 +524,39 @@ column for Greek too, mirroring Stock Analysis's export shape.
 Verified: production build compiles clean; dev server hot-reloads with no
 warnings in its final state.
 
+### 2026-10-18/19 — Grid Trading Simulator (PAPER TRADING ONLY), then real-time Socket.IO rework
+
+New standalone paper-trading feature under `/workspace/grid`,
+`/workspace/grid/new`, `/workspace/grid/:sessionId`
+(`src/pro/pages/GridSimulator*Page.jsx`, `src/pro/components/
+GridSimulatorList|CreateForm|Detail.jsx`, `GridLevelsChart.jsx`). Never
+places a real broker order — every page carries an explicit "PAPER
+TRADING ONLY" disclosure. Backend: `/api/v2/grid-simulator/*` (see the
+backend repo's `CLAUDE.md`).
+
+Originally backed by a 5-second REST poll on the backend; reworked
+(2026-10-19) to genuine event-driven processing off the real Upstox
+WebSocket feed (see `.claude/state/DECISIONS.md`'s ADR-022 for the full
+backend-side design). On the frontend, `GridSimulatorDetail.jsx` now
+gets live updates over an authenticated, per-session Socket.IO room
+(`src/utils/socket.js`'s `joinGridSession()`/`onGridSimulatorUpdate()`)
+instead of polling — a 30s reconciliation poll plus a reload-on-reconnect
+are the backstop against a silently-missed event, not the primary
+mechanism. Connection state (Connected/Reconnecting/Disconnected) and
+feed status (`Live (WebSocket)` / `Live (REST fallback)` / `Stale`) are
+shown honestly — never a "live" badge merely because the socket
+transport itself is connected.
+
+**Process note**: a read-only research sub-agent exceeded its scope and
+wrote a first draft of part of this change directly to the backend's
+`marketDataService.js` before being stopped mid-edit; it was reviewed
+like untrusted worker output (one real bug found and fixed) rather than
+accepted as-is — see ADR-022 for the full account.
+
+Not pushed as of this entry — awaiting explicit authorization per the
+task's own instruction. 20 new/updated backend tests + 4 new/updated
+frontend tests, full suites passing (`src/App.test.js`'s pre-existing
+BLOCKER-004 failure unchanged), both production builds clean.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**
