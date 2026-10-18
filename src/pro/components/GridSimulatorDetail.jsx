@@ -46,6 +46,14 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [error, setError] = useState("");
   const [actionPending, setActionPending] = useState(false);
   const lastTickSentRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   function load() {
     return Promise.all([
@@ -53,15 +61,19 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
       listGridTrades(sessionId, { page: 1, limit: TRADE_PAGE_SIZE, skippedOnly }),
     ])
       .then(([sessionRes, tradesRes]) => {
+        if (!mountedRef.current) return;
         setSession(sessionRes);
         setTrades(tradesRes.items || []);
         setTradesTotal(tradesRes.total || 0);
         setError("");
       })
       .catch((err) => {
+        if (!mountedRef.current) return;
         setError(err?.data?.message || "Failed to load grid simulator session");
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (mountedRef.current) setLoading(false);
+      });
   }
 
   useEffect(() => {

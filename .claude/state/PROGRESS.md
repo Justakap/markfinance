@@ -11,8 +11,10 @@ COMPLETE (2026-10-09).** **Workstream K (Alerts) — COMPLETE (2026-10-09).**
 **"Workstream L — Live Strategy Workspace UI" — COMPLETE (2026-10-09).**
 **Full-platform verification, stabilization & deployment pass — COMPLETE
 (2026-10-09, same day).** **Grid Trading Simulator (PAPER TRADING ONLY,
-standalone feature, not on the original A-L roadmap) — COMPLETE
-(2026-10-18, local-only, not pushed).**
+standalone feature, not on the original A-L roadmap) — COMPLETE, final
+integration audit done, one real defect fixed, verified live against
+production data (2026-10-18). See the dated audit entry near the end of
+this file for push/deploy status.**
 
 **Naming note**: the user's own instruction for this UI milestone was
 titled "Workstream L," reusing the letter the original MASTER.md roadmap
@@ -683,3 +685,99 @@ Commits are local-only, not pushed/deployed, per the task's explicit
 instruction. No real broker order was placed by any test (the test suite
 uses only in-memory fakes/mocked models — the one live-server `curl` call
 was unauthenticated and rejected with 401 before touching any grid logic).
+
+### 2026-10-18 (later) — Grid Trading Simulator final integration audit, one real defect fixed, pushed
+
+**Status: DONE.** Independent adversarial review (a forked sub-agent, not
+the same pass that wrote the code) read all engine/service/feed/route/
+frontend files looking specifically for duplicate-trade and concurrency
+defects. Found one real, confirmed bug and three low-severity items; all
+fixed.
+
+**Bug fixed — trade-ledger `sequence` collision across multi-trade events.**
+`gridSimulatorEngine.js`'s `state.sequence` increments once per EVENT
+(not per trade), but `gridSimulatorService.js`'s `processTick` was
+numbering each trade doc from that same per-event counter
+(`state.sequence + 1 + i`). Any event producing more than one trade (an
+overnight gap crossing several levels — an explicit, core spec scenario,
+not an edge case) left later events' trades with LOWER sequence numbers
+than some of the gap event's own trades, colliding. Consequence: the
+trade ledger's sort order (`listTrades` sorts by `sequence`) and the
+frontend chart's X-axis (`GridLevelsChart.jsx` plots fills by
+`trade.sequence`) could silently show wrong ordering/overlapping points
+for a session that ever had a multi-level gap followed by more trades —
+never cash/holdings corruption, but a real data/UI correctness bug.
+
+Fix: added a dedicated `state.tradeSequence` counter
+(`GridSimulatorSession.js`), separate from the engine's own per-event
+`state.sequence` watermark — the pure engine doesn't need to know about
+ledger-row numbering at all (correct separation of concerns). Each
+trade's ledger `sequence` is now `state.tradeSequence + 1 + i`, and
+`state.tradeSequence` is persisted as `+= trades.length` per event. New
+regression test (`gridSimulatorService.test.js`): a 10-trade gap event
+followed by a later single-trade event produces 11 trade rows with 11
+distinct, correctly-ordered sequence numbers.
+
+**Also fixed (lower severity, found by the same review):**
+- The frontend-pushed tick endpoint (`POST .../sessions/:id/tick`) used
+  to trust a client-supplied `eventTimestamp` as the monotonic dedup
+  watermark. A skewed browser clock (or a crafted request, though
+  self-scoped to the requester's own session) could push a far-future
+  timestamp and permanently freeze the session against every subsequent
+  genuine backend-poll tick, silently (no error surfaced). Fixed: the
+  route now always stamps server `Date.now()`, never a client value —
+  the frontend never relied on sending a precise historical timestamp
+  anyway (it already called this endpoint with `new Date().toISOString()`).
+- `gridSimulatorFeed.js`'s `pollAllActiveSessions` didn't wrap the bulk
+  `marketDataService.warmLiveQuotes()` call in try/catch — in the real
+  implementation this is moot (it already catches everything internally
+  and never rejects), but the per-session isolation the file's own doc
+  comment claims didn't structurally hold at that call site. Added a
+  try/catch so a hypothetical future throw degrades to NO_DATA for that
+  cycle instead of aborting polling for every active session. New
+  regression test.
+- `GridSimulatorDetail.jsx` lacked the unmount-cancellation guard its
+  sibling `GridSimulatorList.jsx` already uses — an in-flight `load()`
+  from just before unmount could call `setState` after unmount (a React
+  dev-mode warning, not a functional bug). Added the same `mountedRef`
+  guard for consistency.
+
+**Live verification against the real local backend + the real (shared,
+production) Atlas MongoDB** — per `backend/CLAUDE.md`'s own stated
+pattern for this repo ("prefer hitting a local server with disposable
+test users/data and clean up afterward"): created a throwaway test user
+(`grid-sim-audit-test@local.invalid`) and grid session, exercised the
+full lifecycle (create → start → tick → pause → resume → stop → cannot
+restart a STOPPED session) through the real HTTP API with a real minted
+JWT, including a genuine backend process kill-and-restart between two
+script halves (not simulated). Confirmed: state, holdings, avgCost, and
+trade history all survived the real restart intact; a genuine concurrent
+Promise.all double-tick against the same crossing opportunity produced
+at most one fill (MongoDB's own atomic `findOneAndUpdate`, not an
+assumption about Node's single-threadedness); ownership isolation (404
+for another user); duplicate active-session rejection (409) and its
+lift once the prior session is STOPPED; input validation (400) and
+unauthenticated rejection (401, not 404/500). All financial figures
+(cash/holdings/avgCost) were independently hand-recomputed from the raw
+fill log and matched the server's output exactly.
+
+Unplanned but valuable: the test session's own 5-second poll loop kept
+evaluating it against REAL live Upstox GICRE quotes the entire time
+(including across the literal process restart), producing a genuine
+`gapFill: true` multi-level fill from real market data mid-test — this
+incidentally proved the gap-fill path, the sequence-collision fix (no
+collisions appeared across that real multi-trade event), and restart
+recovery all work correctly against production data, not just mocks.
+All test artifacts (2 users, 2 sessions, their trades) were deleted
+immediately after — confirmed zero leftover documents afterward.
+
+Full backend suite (including 4 new regression tests) and full frontend
+suite re-run clean after the fixes; both production builds re-confirmed
+clean. See the commit/push section of the final report for hashes and
+deployment status.
+
+Noted, not fixed (pre-existing, not introduced by this work): a Mongoose
+deprecation warning ("the `new` option for findOneAndUpdate() is
+deprecated") surfaced on this backend restart — the `{new: true}` idiom
+predates this feature (`liveStrategyOrchestrator.js` already uses it);
+out of scope to change project-wide here.
