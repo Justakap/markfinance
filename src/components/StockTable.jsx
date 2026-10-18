@@ -23,10 +23,6 @@ const RSI_TIMEFRAMES = [
   { value: "1d", label: "Daily" },
 ];
 
-const ROW_HEIGHT = 56;
-const VIRTUAL_THRESHOLD = 20;
-const VIEWPORT_HEIGHT = 520;
-
 const getRsiData = (quote, rsiTimeframe) =>
   getRsiDataForTimeframe(quote, rsiTimeframe);
 
@@ -117,7 +113,6 @@ const StockTable = ({
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [sortField, setSortField] = useState("symbol");
   const [sortDirection, setSortDirection] = useState("asc");
-  const [scrollTop, setScrollTop] = useState(0);
   const scrollRef = useRef(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedSymbols, setSelectedSymbols] = useState(new Set());
@@ -256,19 +251,7 @@ const StockTable = ({
     }
   };
 
-  const useVirtual = stocks.length > VIRTUAL_THRESHOLD;
-  const visibleCount = Math.ceil(VIEWPORT_HEIGHT / ROW_HEIGHT) + 4;
-  const startIndex = useVirtual
-    ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 2)
-    : 0;
-  const endIndex = useVirtual
-    ? Math.min(stocks.length, startIndex + visibleCount)
-    : stocks.length;
-  const visibleStocks = stocks.slice(startIndex, endIndex);
-  const paddingTop = useVirtual ? startIndex * ROW_HEIGHT : 0;
-  const paddingBottom = useVirtual
-    ? Math.max(0, (stocks.length - endIndex) * ROW_HEIGHT)
-    : 0;
+  const visibleStocks = stocks;
 
   const exportRows = useMemo(
     () =>
@@ -337,10 +320,6 @@ const StockTable = ({
     ],
     [],
   );
-
-  const handleScroll = (event) => {
-    setScrollTop(event.currentTarget.scrollTop);
-  };
 
   const toggleSelect = (stockId) => {
     setSelectionMode(true);
@@ -574,16 +553,7 @@ const StockTable = ({
             </div>
           )}
 
-          <div
-            ref={scrollRef}
-            className="overflow-x-auto"
-            style={
-              useVirtual
-                ? { maxHeight: VIEWPORT_HEIGHT, overflowY: "auto" }
-                : undefined
-            }
-            onScroll={useVirtual ? handleScroll : undefined}
-          >
+          <div ref={scrollRef} className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-100 sticky top-0 z-10">
                 <tr>
@@ -628,14 +598,6 @@ const StockTable = ({
                 </tr>
               </thead>
               <tbody>
-                {paddingTop > 0 && (
-                  <tr aria-hidden="true">
-                    <td
-                      colSpan={colSpan}
-                      style={{ height: paddingTop, padding: 0, border: 0 }}
-                    />
-                  </tr>
-                )}
                 {stocks.length > 0 ? (
                   visibleStocks.map((stock) => {
                     const quote = getQuote(stock);
@@ -661,14 +623,6 @@ const StockTable = ({
                     >
                       No stocks in this watchlist
                     </td>
-                  </tr>
-                )}
-                {paddingBottom > 0 && (
-                  <tr aria-hidden="true">
-                    <td
-                      colSpan={colSpan}
-                      style={{ height: paddingBottom, padding: 0, border: 0 }}
-                    />
                   </tr>
                 )}
               </tbody>
