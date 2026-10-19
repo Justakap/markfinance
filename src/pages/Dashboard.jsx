@@ -118,16 +118,16 @@ const Dashboard = () => {
                 Watchlists
               </Link>
               <Link
-                to="/workspace"
+                to="/workspace/grid"
                 className="border border-slate-200 hover:bg-slate-50 rounded-lg p-3 transition text-center"
               >
-                Strategies
+                Grid Simulator
               </Link>
               <Link
-                to="/workspace/backtests"
+                to="/workspace/grid/backtest"
                 className="border border-slate-200 hover:bg-slate-50 rounded-lg p-3 transition text-center"
               >
-                Backtests
+                Grid Backtest
               </Link>
             </div>
           </div>

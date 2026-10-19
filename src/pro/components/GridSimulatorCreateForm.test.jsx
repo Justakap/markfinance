@@ -29,9 +29,15 @@ describe("GridSimulatorCreateForm", () => {
     expect(screen.getByText(/does not include STT, exchange transaction charges, GST, SEBI/)).toBeInTheDocument();
   });
 
+  test("discloses that the reference price is auto-captured, with no manual reference-price input", () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    expect(screen.getByText(/captured automatically from a fresh live market quote/)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("e.g. 340")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Reference Price/)).not.toBeInTheDocument();
+  });
+
   test("rejects submission with no instrument selected", async () => {
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
-    fireEvent.change(screen.getByPlaceholderText("e.g. 340"), { target: { value: "340" } });
     fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
     fireEvent.click(screen.getByText("Create Grid Session"));
     expect(await screen.findByText("Select an instrument to simulate")).toBeInTheDocument();
@@ -41,37 +47,68 @@ describe("GridSimulatorCreateForm", () => {
   test("rejects a non-positive grid interval", async () => {
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
     await selectInstrument();
-    fireEvent.change(screen.getByPlaceholderText("e.g. 340"), { target: { value: "340" } });
     fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "-3" } });
     fireEvent.click(screen.getByText("Create Grid Session"));
     expect(await screen.findByText("Grid interval must be a positive number")).toBeInTheDocument();
   });
 
-  test("submits a valid configuration and calls onCreated with the new session id", async () => {
+  test("submits a valid configuration (no reference price) and calls onCreated with the new session id", async () => {
     professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s1" } });
     const onCreated = jest.fn();
     render(<GridSimulatorCreateForm onCreated={onCreated} />);
 
     await selectInstrument();
-    fireEvent.change(screen.getByPlaceholderText("e.g. 340"), { target: { value: "340" } });
     fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
     fireEvent.click(screen.getByText("Create Grid Session"));
 
     await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
-      expect.objectContaining({ symbol: "GICRE", referencePrice: 340, gridInterval: 3 }),
+      expect.objectContaining({ symbol: "GICRE", gridInterval: 3, startingHoldings: 0, startingAvgCost: 0 }),
     ));
+    expect(professionalApi.createGridSession.mock.calls[0][0]).not.toHaveProperty("referencePrice");
     expect(onCreated).toHaveBeenCalledWith("s1");
   });
 
-  test("surfaces the backend's error message on failure", async () => {
-    professionalApi.createGridSession.mockRejectedValue({ data: { message: "A grid simulator session for this instrument is already running or paused." } });
+  test("the average-purchase-price field is disabled until starting holdings are entered", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    const avgCostInput = screen.getByPlaceholderText(/no starting holdings/);
+    expect(avgCostInput).toBeDisabled();
+
+    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "200" } });
+    expect(screen.getByPlaceholderText("e.g. 315")).not.toBeDisabled();
+  });
+
+  test("rejects submission when starting holdings are provided without an average purchase price", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "200" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    expect(await screen.findByText(/Average purchase price is required/)).toBeInTheDocument();
+    expect(professionalApi.createGridSession).not.toHaveBeenCalled();
+  });
+
+  test("submits starting holdings and average purchase price together", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s2" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "200" } });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 315"), { target: { value: "315" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ startingHoldings: 200, startingAvgCost: 315 }),
+    ));
+  });
+
+  test("surfaces the backend's error message on failure (e.g. no fresh quote available)", async () => {
+    professionalApi.createGridSession.mockRejectedValue({ data: { message: "No sufficiently fresh market quote is available for this instrument right now. Try again in a moment." } });
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
 
     await selectInstrument();
-    fireEvent.change(screen.getByPlaceholderText("e.g. 340"), { target: { value: "340" } });
     fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
     fireEvent.click(screen.getByText("Create Grid Session"));
 
-    expect(await screen.findByText(/already running or paused/)).toBeInTheDocument();
+    expect(await screen.findByText(/No sufficiently fresh market quote/)).toBeInTheDocument();
   });
 });

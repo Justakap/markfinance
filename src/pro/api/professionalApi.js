@@ -196,16 +196,21 @@ export function markAllNotificationsRead() {
  * Grid Trading Simulator — PAPER TRADING ONLY. /api/v2/grid-simulator/*.
  * Nothing here ever places a real broker order.
  */
+/** The initial reference is always captured server-side from a fresh live
+ *  quote at creation time — never passed from here. Any `referencePrice`
+ *  sent in the body is ignored by the backend (dynamic-reference strategy,
+ *  ADR-023's companion session-creation change). */
 export function createGridSession({
   symbol,
   instrumentKey,
-  referencePrice,
   gridInterval,
   quantityPerLevel,
   startingCapital,
   maxPositionSize,
   commissionPct,
   slippagePct,
+  startingHoldings,
+  startingAvgCost,
 }) {
   return apiFetch("/api/v2/grid-simulator/sessions", {
     method: "POST",
@@ -213,13 +218,14 @@ export function createGridSession({
     body: JSON.stringify({
       symbol,
       instrumentKey,
-      referencePrice,
       gridInterval,
       quantityPerLevel,
       startingCapital,
       maxPositionSize,
       commissionPct,
       slippagePct,
+      startingHoldings,
+      startingAvgCost,
     }),
   });
 }
@@ -255,14 +261,69 @@ export function listGridTrades(sessionId, { page = 1, limit = 50, skippedOnly = 
 }
 
 /** Lets the browser push a price it already has (e.g. from its own live
- *  Socket.IO marketTick subscription) for lower latency than the backend's
- *  own poll loop — purely an optional accelerant; the backend poller
- *  (services/gridSimulatorFeed.js) is the fallback that keeps a session
- *  progressing even with no tab open. */
-export function submitGridTick(sessionId, { price, eventTimestamp }) {
+ *  Socket.IO marketTick subscription) for lower latency — purely an
+ *  optional accelerant; the backend's event-driven real-time processor
+ *  (services/gridSimulatorRealtime.js, genuine Upstox WebSocket ticks
+ *  only) is authoritative and keeps a session progressing with no tab
+ *  open at all. The backend always server-stamps its own eventTimestamp. */
+export function submitGridTick(sessionId, { price }) {
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/tick`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ price, eventTimestamp }),
+    body: JSON.stringify({ price }),
   });
+}
+
+/**
+ * Grid Backtest — PAPER TRADING / HISTORICAL SIMULATION ONLY.
+ * /api/v2/grid-backtest/*. Shares the dynamic-reference grid engine with
+ * the live simulator but never places a real broker order and never
+ * touches a live session.
+ */
+export function createGridBacktest({
+  symbol,
+  instrumentKey,
+  timeframe,
+  requestedStartDate,
+  requestedEndDate,
+  gridInterval,
+  quantityPerLevel,
+  startingCapital,
+  maxPositionSize,
+  commissionPct,
+  slippagePct,
+  startingHoldings,
+  startingAvgCost,
+}) {
+  return apiFetch("/api/v2/grid-backtest/backtests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      symbol,
+      instrumentKey,
+      timeframe,
+      requestedStartDate,
+      requestedEndDate,
+      gridInterval,
+      quantityPerLevel,
+      startingCapital,
+      maxPositionSize,
+      commissionPct,
+      slippagePct,
+      startingHoldings,
+      startingAvgCost,
+    }),
+  });
+}
+
+export function listGridBacktests({ page = 1, limit = 20 } = {}) {
+  return apiFetch(`/api/v2/grid-backtest/backtests?page=${page}&limit=${limit}`);
+}
+
+export function getGridBacktest(backtestId) {
+  return apiFetch(`/api/v2/grid-backtest/backtests/${backtestId}`);
+}
+
+export function listGridBacktestTrades(backtestId, { page = 1, limit = 100 } = {}) {
+  return apiFetch(`/api/v2/grid-backtest/backtests/${backtestId}/trades?page=${page}&limit=${limit}`);
 }

@@ -25,7 +25,7 @@ function sessionDetail(overrides = {}) {
     instrumentKey: "NSE_EQ|GICRE",
     symbol: "GICRE",
     status: "ACTIVE",
-    config: { referencePrice: 340, gridInterval: 3, quantityPerLevel: 100 },
+    config: { referencePrice: 340, referenceCapturedAt: "2026-01-01T09:00:00.000Z", gridInterval: 3, quantityPerLevel: 100 },
     state: { lastPrice: 336, lastEventTimestamp: "2026-01-01T09:15:00.000Z", sequence: 1 },
     portfolio: { cash: 66400, holdings: 100, avgCost: 336, realizedPnL: 0, unrealizedPnL: 400, equity: 100400 },
     lastFeedStatus: "LIVE",
@@ -211,5 +211,14 @@ describe("GridSimulatorDetail", () => {
     expect(leaveSpy).toHaveBeenCalled();
     expect(unsubUpdateSpy).toHaveBeenCalled();
     expect(unsubConnectionSpy).toHaveBeenCalled();
+  });
+
+  test("displays the immutable initial reference and its capture time (dynamic-reference strategy)", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    expect(screen.getByText(/Initial reference ₹340\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/captured/)).toBeInTheDocument();
+    unmount();
   });
 });

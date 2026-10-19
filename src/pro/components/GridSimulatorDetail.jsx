@@ -173,7 +173,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
       const now = Date.now();
       if (now - lastTickSentRef.current < 1000) return; // light client-side throttle
       lastTickSentRef.current = now;
-      submitGridTick(sessionId, { price: Number(price), eventTimestamp: new Date().toISOString() }).catch(() => {
+      submitGridTick(sessionId, { price: Number(price) }).catch(() => {
         // Non-fatal — the backend's own poll loop will catch up regardless.
       });
     });
@@ -223,7 +223,8 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
         <div>
           <h2 className="text-lg font-semibold text-gray-900">{session.symbol}</h2>
           <p className="text-xs text-gray-500">
-            Reference ₹{config.referencePrice} · Grid ₹{config.gridInterval} · Qty/level {config.quantityPerLevel}
+            Initial reference ₹{fmt(config.referencePrice)} (captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
+            Grid ₹{config.gridInterval} · Qty/level {config.quantityPerLevel}
           </p>
         </div>
         <div className="flex items-center gap-2">

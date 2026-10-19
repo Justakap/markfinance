@@ -1,62 +1,29 @@
 import {
-  LayoutDashboard,
   LineChart,
   Sigma,
-  CandlestickChart,
-  BarChart3,
   Settings,
-  Radio,
   Grid3x3,
 } from "lucide-react";
 
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import NotificationBell from "../pro/components/NotificationBell";
+import { LOGO_DASHBOARD_PATH, NAV_MENU_ITEM_PATHS } from "./topNavbarConfig";
 
 const TopNavbar = ({ showLive = false, lastUpdatedLabel = "" }) => {
   const menuItems = [
-    {
-      title: "Overview",
-      icon: LayoutDashboard,
-      path: "/dashboard",
-    },
-    {
-      title: "Stock Analysis",
-      icon: LineChart,
-      path: "/analysis",
-    },
-    {
-      title: "Greek",
-      icon: Sigma,
-      path: "/greek",
-    },
-    {
-      title: "Strategies",
-      path: "/workspace",
-      icon: CandlestickChart,
-      end: true,
-    },
-    {
-      title: "Backtests",
-      path: "/workspace/backtests",
-      icon: BarChart3,
-    },
-    {
-      title: "Live",
-      path: "/workspace/live",
-      icon: Radio,
-    },
-    {
-      title: "Grid Sim",
-      path: "/workspace/grid",
-      icon: Grid3x3,
-    },
+    { title: "Stock Analysis", icon: LineChart, path: NAV_MENU_ITEM_PATHS["Stock Analysis"] },
+    { title: "Greek", icon: Sigma, path: NAV_MENU_ITEM_PATHS.Greek },
+    { title: "Grid", icon: Grid3x3, path: NAV_MENU_ITEM_PATHS.Grid },
   ];
 
   return (
     <div className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-50 flex items-center px-4 gap-2">
-      <h1 className="text-xl font-bold text-blue-700 whitespace-nowrap pr-4 mr-2 border-r border-gray-100">
+      <Link
+        to={LOGO_DASHBOARD_PATH}
+        className="text-xl font-bold text-blue-700 whitespace-nowrap pr-4 mr-2 border-r border-gray-100 hover:text-blue-800"
+      >
         Mark Finance
-      </h1>
+      </Link>
 
       <nav className="flex items-center gap-1 overflow-x-auto">
         {menuItems.map((item) => {

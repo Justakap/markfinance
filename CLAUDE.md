@@ -558,5 +558,65 @@ task's own instruction. 20 new/updated backend tests + 4 new/updated
 frontend tests, full suites passing (`src/App.test.js`'s pre-existing
 BLOCKER-004 failure unchanged), both production builds clean.
 
+### 2026-10-19 (later) — Dynamic-reference grid strategy
+
+**Uncommitted as of this entry** — explicit instruction not to commit.
+
+`GridSimulatorCreateForm.jsx` no longer has a Reference Price input — the
+backend auto-captures it from a fresh live quote at creation (discloses
+this in the form) and rejects creation if no fresh quote is available.
+New optional Starting Holdings / Average Purchase Price fields (the
+latter required and enabled only once holdings > 0 are entered).
+`GridSimulatorDetail.jsx` now shows the immutable initial reference and
+its capture time. See the backend repo's `CLAUDE.md` and this repo's
+`.claude/state/DECISIONS.md` (ADR-023/ADR-024) for the full backend-side
+design, including a fix for REST-fallback prices that were previously
+able to silently trigger simulated trades (now display-only). 11 new/
+updated frontend tests, full suite passing (`src/App.test.js`'s
+pre-existing BLOCKER-004 failure unchanged). Production build clean.
+
+### 2026-10-19 (later still) — Grid Backtest; navigation simplified to Grid-only
+
+**Uncommitted as of this entry** — explicit instruction not to commit,
+push, or deploy.
+
+**Navigation**: `TopNavbar.jsx`'s menu is now "Stock Analysis" / "Greek"
+/ "Grid" only — "Overview", "Live", and the legacy "Strategies"/
+"Backtests" entries are removed from the navbar. The logo is now a real
+`<Link to="/dashboard">`. `Dashboard.jsx`'s Quick Actions grid links to
+"Grid Simulator" (`/workspace/grid`) and "Grid Backtest"
+(`/workspace/grid/backtest`) instead of the legacy Strategies/Backtests
+links. **Nothing was deleted** — `Strategies.jsx`, `BacktestPage.jsx`,
+`BacktestsPage.jsx` and every legacy `/workspace/*` route in `App.js`
+are untouched and still reachable by direct URL; this is purely an
+entry-point change (see ADR-026). New `GridWorkspaceTabs.jsx` gives the
+Grid workspace a two-tab "Live Simulator"/"Backtest" sub-navigation
+instead of a second top-level navbar item.
+
+**Grid Backtest**: new historical-replay feature for the existing
+dynamic-reference grid strategy, reusing `gridSimulatorEngine.js`'s
+crossing/accounting math unchanged (see ADR-027 for the full design —
+ambiguous-OHLC conservative-vs-finer-grained policy, initial-reference-
+from-first-candle behavior, live/backtest state isolation). New pages:
+`GridBacktestListPage`/`CreatePage`/`DetailPage` at
+`/workspace/grid/backtest`, `/workspace/grid/backtest/new`,
+`/workspace/grid/backtest/:backtestId`. New components:
+`GridBacktestCreateForm.jsx`, `GridBacktestList.jsx`,
+`GridBacktestDetail.jsx` (equity curve, trade ledger with an "ASSUMED"
+badge on conservative-intrabar fills, data-quality/intrabar-assumption
+disclosures). New API functions in `professionalApi.js`:
+`createGridBacktest`, `listGridBacktests`, `getGridBacktest`,
+`listGridBacktestTrades` (`/api/v2/grid-backtest/*`, see the backend
+repo's `CLAUDE.md`). `submitGridTick`'s signature also simplified to
+`(sessionId, { price })` — the backend always server-stamps its own
+`eventTimestamp` now.
+
+31 new/updated frontend tests, full suite 149/149 real tests passing
+across 22 suites (`src/App.test.js`'s pre-existing BLOCKER-004 failure
+unchanged). 39 new backend tests, full backend suite passing. Both
+production builds clean. No production data read or mutated by any test
+in this round — see `.claude/state/PROGRESS.md` and ADR-025/026/027 for
+the full account.
+
 **Update this section whenever a future session makes a major
 architectural or security change — don't let it go stale.**

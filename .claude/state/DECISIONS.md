@@ -994,3 +994,325 @@ not itself resolve BLOCKER-003 if production's WS is currently down; in
 that state the simulator honestly falls back to `LIVE_REST_FALLBACK`
 status via the exact same already-existing REST poll the watchlist
 feature already relies on, rather than silently claiming to be live.
+
+## ADR-023 — A REST fallbackTick may update display status only; it must never execute a trade
+
+Status: ACCEPTED
+
+Decision:
+
+`services/gridSimulatorRealtime.js`'s `processSessionTick()` now branches
+on tick source: a genuine WebSocket tick (`source: "ws"`) is the only
+thing that ever calls `gridSimulatorService.processTick()` (the
+authoritative crossing/fill engine). A REST-fallback tick
+(`source: "rest"`, only ever emitted while the socket is down) updates
+only `lastFeedStatus`/`lastFeedCheckAt`/`lastFeedPrice` — for honest
+display purposes — and pushes that to the Socket.IO room with an empty
+`trades` array. It never advances the crossing watermark, never touches
+cash/holdings, and never inserts a ledger row.
+
+Reason:
+
+Found as a genuine discrepancy during this milestone's own audit step
+(ADR-022's original implementation let `fallbackTick` drive
+`processTick()` exactly like a genuine `tick`, identically) — a direct
+violation of this milestone's explicit, named requirement: "Only genuine
+WebSocket tick events may trigger authoritative grid trades... must not
+silently trigger simulated BUY/SELL executions" from REST fallback data.
+REST LTP-poll prices are a reasonable, already-disclosed fallback for
+*display* continuity during a WS outage (exactly what the rest of the
+app already does for watchlists), but are a materially different data
+source — slower, batched, and not the genuine tick-by-tick feed a grid
+strategy's crossing logic is specified against — and conflating the two
+risks a fill being "simulated" against a price that was never actually
+the live traded price at that instant.
+
+Consequence:
+
+A session whose feed is `LIVE_REST_FALLBACK` visibly stops progressing
+its grid (no new fills) until the WebSocket reconnects and a genuine
+`tick` arrives — this is a deliberate, now-tested behavior
+(`tests/gridSimulatorRealtime.test.js`, tests 18a/18b), not an oversight.
+The frontend's existing `Live (REST fallback)` badge (already labeled
+honestly, pre-dating this ADR) now accurately reflects "prices are
+updating for display, but the grid is not being evaluated" rather than
+silently implying otherwise.
+
+## ADR-024 — Dynamic-reference grid strategy: auto-captured initial anchor; optional starting inventory
+
+Status: ACCEPTED
+
+Decision:
+
+The grid's initial reference (R) is no longer a user-typed value. At
+session creation, `routes/gridSimulatorRoutes.js`'s
+`captureFreshReference()` actively warms a live quote
+(`marketDataService.warmLiveQuotes()`) and requires it to be both present
+and within `GRID_SIMULATOR_QUOTE_FRESHNESS_MS` (default 15s) of now;
+creation is rejected (400) if no sufficiently fresh quote is available —
+never a silent fallback to a stale/cached price. The captured
+`{price, timestamp}` becomes `config.referencePrice`/
+`config.referenceCapturedAt`, both persisted and immutable thereafter
+(pause/resume/restart never re-derive or reset them).
+
+A session may also start with existing inventory: `startingHoldings`
+(default 0) and, required only when `startingHoldings > 0`,
+`startingAvgCost` — validated at the engine layer
+(`gridSimulatorEngine.js`'s `validateGridConfig`) and seeded directly
+into `createInitialGridState()`'s initial `holdings`/`avgCost`. Starting
+capital (virtual cash) remains an independent, separately-configured
+value — it is never reduced by the starting inventory's notional cost;
+the two are deliberately independent inputs; the cost basis (see
+example: 200 shares @ ₹315 avg → ₹63,000 basis) only exists to compute
+realized P&L correctly on a later sell.
+
+The crossing/dedup watermark (`state.lastPrice`/`state.lastEventTimestamp`)
+is now explicitly seeded from the captured reference at creation
+(`lastPrice = referencePrice`, `lastEventTimestamp = referenceCapturedAt`)
+rather than left `null` for an implicit first-tick fallback — "at session
+creation, initialize the crossing watermark using the initial reference
+quote," literally.
+
+Reason:
+
+This was the task's explicit objective. Investigated whether the
+existing engine's crossing/re-arming state machine (R + k·G level
+geometry, inclusive-both-ends crossing detection, armed/disarmed
+re-arming) could implement the specified rules without contradiction —
+it already could, unchanged: the engine was always generic over whatever
+value `config.referencePrice` held; nothing about its math assumed that
+value was user-typed versus auto-captured. The only genuinely new work
+was at the session-creation boundary (fetch + freshness-validate a quote,
+accept optional starting inventory) and the realtime-authoritative-source
+fix (ADR-023, found during the same audit). Verified directly against
+the task's own worked examples as regression tests
+(`tests/gridSimulatorEngine.test.js`): the exact oscillation
+320→317→314→317→320, the exact 320→323→326→323 zero-holdings-sell-skip
+sequence, and a 320→330 upward gap recording levels 323/326/329
+separately from the single actual 330 fill price — all pass unchanged
+against the pre-existing engine.
+
+Consequence:
+
+`GridSimulatorSession.config` gains `referenceCapturedAt` (required),
+`startingHoldings`/`startingAvgCost` (both optional, default 0). The
+POST `/v2/grid-simulator/sessions` request body no longer accepts (or
+reads) a client-supplied `referencePrice` — any value sent is silently
+ignored, matching the explicit "never a user-typed value" requirement.
+`GridSimulatorCreateForm.jsx` drops the Reference Price input entirely
+and discloses that it's auto-captured; adds optional Starting
+Holdings/Average Purchase Price inputs with the avg-cost field disabled
+until holdings are provided. `GridSimulatorDetail.jsx` now displays the
+immutable initial reference and its capture time. 34 new/updated backend
+tests (engine/service/route/realtime layers) and 11 new/updated frontend
+tests. Hand-calculated accounting regression test included (200 shares
+@ ₹315 avg, sell 100 @ ₹320 → realized P&L = ₹500, independently
+verified). No change to the pure crossing/accounting engine's math
+itself — this was a session-creation and real-time-authority change,
+not a strategy rewrite.
+
+Known limitation, disclosed not fixed: a session created and ticked
+within the same test-execution millisecond (only reachable in a fully
+synchronous mocked test, not realistically possible in production given
+real network/DB latency between creation and any subsequent tick) would
+have its first tick rejected as a timestamp-duplicate against the
+just-seeded watermark — this is the correct, intentional consequence of
+rejecting exact-timestamp duplicates (needed for genuine redelivery
+protection), not a bug; the one test that could hit it was fixed with a
+small explicit delay rather than weakening the dedup check itself.
+
+## ADR-025 — Grid Backtest candle retrieval reuses `fetchHistoricalRangeMaybeChunked` directly; fixed a retention-clamp bug it exposed
+
+Status: ACCEPTED
+
+Decision:
+
+The Grid Backtest feature's historical candle retrieval (primary
+timeframe and the finer-grained fallback, see ADR-027) calls
+`candleService.js`'s existing `fetchHistoricalRangeMaybeChunked(instrumentKey,
+unit, interval, fromDate, toDate, maxBars)` directly — the same
+chunked-fetch/cache/dedup/retry infrastructure ADR-020 built for 365-day
+backtest ranges — rather than writing a second, backtest-specific fetch
+path. It was previously only called internally within
+`candleService.js`; made part of its exports (additive, no signature
+change) so `gridBacktestService.js` could reuse it.
+
+While wiring this up, found and fixed a real bug it exposed:
+`clampToIntradayRetention` was being applied unconditionally inside
+`fetchHistoricalCandles`, regardless of `unit`. For a `unit: "days"`
+explicit-range request (e.g. a multi-year daily Grid Backtest), this
+would have silently and incorrectly clamped the requested start date to
+the intraday retention window — producing a materially shorter history
+than requested without any disclosure, a direct violation of this
+milestone's "report requested vs. actual range" requirement. Fixed by
+gating the clamp to `unit === "minutes" || unit === "hours"` only.
+Verified safe for the two pre-existing call sites (both only ever pass
+`unit: "minutes"`) via grep before changing the behavior.
+
+Reason:
+
+The task's data-quality requirements ("reuse existing
+cache/chunked-retrieval mechanisms... never fabricate or interpolate
+missing data... detect and report retention limits") are exactly what
+ADR-020's chunked fetcher was already built to satisfy for backtesting
+use cases — writing a second implementation would create the "two
+subtly different implementations" risk the task explicitly warned
+against, this time at the data layer rather than the strategy layer.
+
+Consequence:
+
+`fetchHistoricalRangeMaybeChunked`'s return shape
+(`{candles, incomplete, failedRanges, retentionClamped, retentionFrom}`)
+is persisted directly into `GridBacktestResult.dataQuality`, so every
+disclosure the UI needs (incomplete coverage, retention clamping, actual
+vs. requested range) comes from the exact same code path a human could
+independently verify against `candleService.js`. Added 2 regression
+tests (`tests/chunkedCandleFetch.test.js`) proving the days/minutes
+clamp-gating distinction; full backend suite (now 13/13 in that file)
+unaffected otherwise.
+
+## ADR-026 — Navbar simplification: Grid is the only exposed workspace; legacy Strategy/Backtest are hidden, not deleted
+
+Status: ACCEPTED
+
+Decision:
+
+`TopNavbar.jsx`'s menu now contains exactly three items — "Stock
+Analysis", "Greek", "Grid" — removing "Overview", "Live", and the legacy
+"Strategies"/"Backtests" entries. The logo is now a `<Link
+to="/dashboard">` instead of inert text. `Dashboard.jsx`'s Quick Actions
+grid swaps its "Strategies"/"Backtests" links for "Grid Simulator"
+(`/workspace/grid`) and "Grid Backtest" (`/workspace/grid/backtest`).
+
+No source files, backend routes, Mongoose models, or stored
+`Strategy`/`Backtest`/`LiveStrategy` data were touched or deleted — this
+is purely a navigation/entry-point change. Every legacy route
+(`/workspace`, `/workspace/strategies/:id`, `/workspace/backtests`,
+`/workspace/live`, etc.) in `App.js` is untouched and still reachable by
+direct URL; nothing redirects away from them. The pre-existing
+informational stat cards on `Dashboard.jsx` ("Strategies: N",
+"Backtests: N") were deliberately left alone — they're read-only
+summaries, not navigation entry points, and weren't part of what was
+asked.
+
+To satisfy "separate, clearly labeled destinations for Live Simulator
+and Backtest" without adding a second top-level navbar item (explicitly
+disallowed), a new `GridWorkspaceTabs.jsx` component renders a two-tab
+sub-navigation ("Live Simulator" / "Backtest") inside the Grid workspace
+itself, used by all five Grid pages (`GridSimulatorListPage`,
+`GridSimulatorCreatePage`/`DetailPage` show "live" active;
+`GridBacktestListPage`/`CreatePage`/`DetailPage` show "backtest" active).
+
+Reason:
+
+The task's explicit instruction: "Grid is the only strategy/backtesting
+workspace currently exposed to users... Hide, do not delete, legacy
+Strategy and Backtest functionality... Do not add a new, separate 'Grid
+Backtest' navbar item."
+
+Consequence:
+
+`TopNavbar.jsx` imports its menu data (`NAV_MENU_ITEM_TITLES`,
+`NAV_MENU_ITEM_PATHS`, `LOGO_DASHBOARD_PATH`) from a new dependency-free
+`topNavbarConfig.js` rather than defining them inline — purely a
+BLOCKER-004 Jest-testability workaround (see ADR-017's precedent):
+`TopNavbar.jsx` itself cannot be rendered under Jest (transitively
+imports `react-router-dom`), so `TopNavbar.test.jsx` imports only the
+config module and asserts on its data instead of rendering the real
+component. 7 new tests confirm: logo path, Overview/Live/legacy-items
+absence, Grid presence, Stock Analysis/Greek preservation, and no
+"Grid Backtest"/"Backtest" item was added to the navbar itself (that
+destination only exists inside `GridWorkspaceTabs`). `GridWorkspaceTabs`
+itself is router-free by construction (`onNavigate` callback prop,
+ADR-017 pattern) — 3 tests confirm both destinations render and route
+correctly.
+
+## ADR-027 — Grid Backtest: pure candle-replay engine reusing the live crossing/accounting math; deterministic conservative intrabar policy; full live/backtest state isolation
+
+Status: ACCEPTED
+
+Decision:
+
+New `services/gridBacktestEngine.js` is a pure function module
+(`replayCandles`, `findInitialReferenceCandle`,
+`buildConservativeSubEvents`) with zero DB/network dependencies. It
+reuses `gridSimulatorEngine.js`'s `createInitialGridState`,
+`processPriceUpdate`, `computePortfolioMetrics`, and `roundPrice`
+directly, unchanged — the live engine's crossing/re-arming/cost-basis
+math required no modification to support historical replay, since it
+was already generic over whatever `referencePrice` a config carries
+(same finding as ADR-024). `replayCandles` folds a sorted candle array
+through the live engine one sub-event at a time, accumulating the trade
+ledger, an equity curve (one point per candle, mark-to-market against
+that candle's close), running max drawdown, and peak capital deployed.
+
+**Ambiguous-OHLC policy** (exactly as specified): for each candle,
+first attempt a genuinely finer-grained candle series for the same
+range via `FINER_TIMEFRAME` (`"1d"→"1h"→"15m"→"5m"→"1m"→none`,
+`gridBacktestService.js`'s `fetchWithFinerFallback`). If a complete,
+non-empty finer series is available, replay its real closes
+chronologically through the same engine (`isFinerGrained: true`, one
+engine event per finer candle, no further sub-expansion) — these trades
+are genuinely observed, not assumed. Otherwise, apply a fixed,
+unconditional conservative decomposition to the original candle: Open →
+Low → High → Close, each a separate engine event with a synthetic
+microsecond-offset timestamp (`buildConservativeSubEvents`/
+`offsetTimestamp`) — never color-dependent (a green vs. red candle use
+the identical O-L-H-C order), never chosen to produce a better or worse
+simulated outcome. Every resulting trade carries `assumedIntrabar:
+true/false`, plus both the real `candleTimestamp` and the (possibly
+synthetic) `eventTimestamp` — so an assumed path can never be displayed
+or persisted as if it were an observed tick. `dataQuality.
+intrabarAssumption` (a fixed enum, currently only
+`"open-low-high-close"`) and `usedFinerGrainedCandles` are persisted and
+shown in the UI disclosure (`GridBacktestDetail.jsx`).
+
+**Initial reference**: `findInitialReferenceCandle` picks the first
+candle in the fetched (and already quality-checked) series with a
+finite, positive close — never the current live quote. If the fetched
+range's first candle is later than the requested start date (e.g. the
+instrument didn't trade yet, or data was clamped), this is disclosed via
+`dataQuality.actualStartDate` vs. `config.requestedStartDate` rather
+than silently substituted. If no valid candle exists at all, the backtest
+is persisted as `FAILED` with a client-safe error, never silently
+producing a zero-trade "success."
+
+**Live/backtest isolation**: `gridBacktestService.js`'s
+`runGridBacktest` builds a brand-new in-memory state via
+`createInitialGridState` for each run — it never reads, writes, or
+pins/unpins anything in `GridSimulatorSession`, `marketDataService`'s
+live subscriptions, or the live Socket.IO rooms. New, separate
+persistence models (`GridBacktestResult`, `GridBacktestTrade`) rather
+than reusing the live session/trade models, so a backtest can never be
+mistaken for, or accidentally mutate, live authoritative state. The live
+realtime processor (`gridSimulatorRealtime.js`, ADR-022/ADR-023) is
+completely untouched by this milestone.
+
+Reason:
+
+Directly implements this milestone's core constraints: "reuse the live
+engine's core strategy and accounting semantics... do not implement a
+second, subtly different version," the six-step ambiguous-OHLC policy
+(finer candles first, replay chronologically, else a documented
+conservative assumption, record it, never present it as observed, keep
+it stable/deterministic/tested), and "must share the underlying grid
+engine logic but MUST NOT share authoritative execution state" with the
+live simulator.
+
+Consequence:
+
+`runGridBacktest` persists a `RUNNING` document before replay starts and
+updates it to `COMPLETED` (with full metrics/dataQuality/equitySeries)
+or `FAILED` (with the error message) afterward — a crash mid-replay
+never leaves a misleading or missing result. 13 new engine tests
+(including hand-verified replays of the task's own worked oscillation
+examples, multi-level gap crossings, and a determinism check — identical
+inputs produce byte-identical output on repeated runs) + 17 service
+tests (validation, initial-reference/disclosure behavior, finer-grained
+vs. conservative-fallback selection, starting-inventory accounting
+reconciled by hand, ownership scoping) + 9 route tests (ownership,
+validation, persistence of both success and failure outcomes) — 39 new
+backend tests total, full suite passing. No production/shared-database
+test was run (explicit safety constraint, per the task and the prior
+session's discovery of a real active user session in production) — all
+tests use in-memory fakes, consistent with ADR-023/ADR-024's precedent.

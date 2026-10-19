@@ -28,6 +28,9 @@ const LiveRuntimeDetailPage = lazy(() => import("./pro/pages/LiveRuntimeDetailPa
 const GridSimulatorListPage = lazy(() => import("./pro/pages/GridSimulatorListPage"));
 const GridSimulatorCreatePage = lazy(() => import("./pro/pages/GridSimulatorCreatePage"));
 const GridSimulatorDetailPage = lazy(() => import("./pro/pages/GridSimulatorDetailPage"));
+const GridBacktestListPage = lazy(() => import("./pro/pages/GridBacktestListPage"));
+const GridBacktestCreatePage = lazy(() => import("./pro/pages/GridBacktestCreatePage"));
+const GridBacktestDetailPage = lazy(() => import("./pro/pages/GridBacktestDetailPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 
 function RouteFallback() {
@@ -185,6 +188,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <GridSimulatorCreatePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/grid/backtest"
+            element={
+              <ProtectedRoute>
+                <GridBacktestListPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/grid/backtest/new"
+            element={
+              <ProtectedRoute>
+                <GridBacktestCreatePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workspace/grid/backtest/:backtestId"
+            element={
+              <ProtectedRoute>
+                <GridBacktestDetailPage />
               </ProtectedRoute>
             }
           />
