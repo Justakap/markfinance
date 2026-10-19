@@ -82,6 +82,16 @@ describe("GridSimulatorDetail", () => {
     unmount();
   });
 
+  test("Trade Events stat shows Total Trade plus a Buy/Sell breakdown from tradeCounts", async () => {
+    professionalApi.getGridSession.mockResolvedValue(
+      sessionDetail({ tradeCounts: { buyCount: 7, sellCount: 4, skippedCount: 2, partialCount: 1 } }),
+    );
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText("Total Trade : 11")).toBeInTheDocument());
+    expect(screen.getByText("Buy : 7 Sell : 4")).toBeInTheDocument();
+    unmount();
+  });
+
   test("an ACTIVE session shows Pause and Stop, not Start", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "ACTIVE" }));
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
@@ -192,12 +202,12 @@ describe("GridSimulatorDetail", () => {
     };
 
     function tradeEventsValue() {
-      return screen.getByText("Trade Events").closest("div").querySelector("p:last-child").textContent;
+      return screen.getByText("Trade Events").closest("div").querySelectorAll("p")[1].textContent;
     }
 
     pushUpdate(update);
     await waitFor(() => expect(screen.getAllByText("₹333.00").length).toBe(1));
-    expect(tradeEventsValue()).toBe("1");
+    expect(tradeEventsValue()).toBe("Total Trade : 1");
 
     // The identical trade is pushed again (e.g. a reconnect replaying a
     // buffered event, or an overlapping listener firing twice).
@@ -207,7 +217,7 @@ describe("GridSimulatorDetail", () => {
     // count did not increment a second time for the duplicate.
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(screen.getAllByText("₹333.00").length).toBe(1);
-    expect(tradeEventsValue()).toBe("1");
+    expect(tradeEventsValue()).toBe("Total Trade : 1");
     unmount();
   });
 
