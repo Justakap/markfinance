@@ -92,6 +92,8 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [refreshing, setRefreshing] = useState(false);
   const [showConfigEditor, setShowConfigEditor] = useState(false);
   const [editQuantityPerLevel, setEditQuantityPerLevel] = useState("");
+  const [editUseSeparateSellQuantity, setEditUseSeparateSellQuantity] = useState(false);
+  const [editSellQuantityPerLevel, setEditSellQuantityPerLevel] = useState("");
   const [editGridInterval, setEditGridInterval] = useState("");
   const [editUseSeparateSellVariance, setEditUseSeparateSellVariance] = useState(false);
   const [editSellVariance, setEditSellVariance] = useState("");
@@ -250,6 +252,8 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   // with a half-applied edit.
   function openConfigEditor() {
     setEditQuantityPerLevel(String(session.config.quantityPerLevel));
+    setEditUseSeparateSellQuantity(session.config.sellQuantityPerLevel != null);
+    setEditSellQuantityPerLevel(session.config.sellQuantityPerLevel != null ? String(session.config.sellQuantityPerLevel) : "");
     setEditGridInterval(String(session.config.gridInterval));
     setEditUseSeparateSellVariance(session.config.sellVariance != null);
     setEditSellVariance(session.config.sellVariance != null ? String(session.config.sellVariance) : "");
@@ -261,6 +265,10 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     e.preventDefault();
     if (!Number.isInteger(Number(editQuantityPerLevel)) || Number(editQuantityPerLevel) < 1) {
       showError("Quantity per level must be a positive integer");
+      return;
+    }
+    if (editUseSeparateSellQuantity && !(Number.isInteger(Number(editSellQuantityPerLevel)) && Number(editSellQuantityPerLevel) > 0)) {
+      showError("Sell quantity must be a positive integer");
       return;
     }
     if (!Number.isFinite(Number(editGridInterval)) || Number(editGridInterval) <= 0) {
@@ -280,6 +288,8 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     try {
       await updateGridSessionConfig(sessionId, {
         quantityPerLevel: Number(editQuantityPerLevel),
+        useSeparateSellQuantity: editUseSeparateSellQuantity,
+        sellQuantityPerLevel: editUseSeparateSellQuantity ? Number(editSellQuantityPerLevel) : undefined,
         gridInterval: Number(editGridInterval),
         useSeparateSellVariance: editUseSeparateSellVariance,
         sellVariance: editUseSeparateSellVariance ? Number(editSellVariance) : undefined,
@@ -299,7 +309,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!session) return <p className="text-sm text-gray-400">Session not found.</p>;
 
-  const { config, state, portfolio, lastFeedStatus, lastFeedCheckAt, lastFeedPrice } = session;
+  const { config, state, portfolio, charges, lastFeedStatus, lastFeedCheckAt, lastFeedPrice } = session;
 
   return (
     <div className="space-y-4">
@@ -387,12 +397,26 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-500">Quantity per Level</label>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Quantity per Level / Buy Qty</label>
                   <input
                     type="number"
                     value={editQuantityPerLevel}
                     onChange={(e) => setEditQuantityPerLevel(e.target.value)}
                     className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                    <input type="checkbox" checked={editUseSeparateSellQuantity} onChange={(e) => setEditUseSeparateSellQuantity(e.target.checked)} />
+                    Use a different Sell Qty
+                  </label>
+                  <input
+                    type="number"
+                    value={editSellQuantityPerLevel}
+                    onChange={(e) => setEditSellQuantityPerLevel(e.target.value)}
+                    disabled={!editUseSeparateSellQuantity}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                    placeholder={editUseSeparateSellQuantity ? "e.g. 50" : "Mirrors Buy Qty"}
                   />
                 </div>
                 <div>
@@ -451,6 +475,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           value={`Total Trade : ${formatQuantity(session?.tradeCounts ? session.tradeCounts.buyCount + session.tradeCounts.sellCount : tradesTotal)}`}
           sub={session?.tradeCounts ? `Buy : ${formatQuantity(session.tradeCounts.buyCount)}   Sell : ${formatQuantity(session.tradeCounts.sellCount)}` : undefined}
         />
+        <ChargesStat charges={charges} />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">
@@ -501,6 +526,55 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
             </table>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ADR-035: DISPLAY-ONLY statutory/brokerage charges estimate — never
+// affects cash/holdings/realizedPnL (see the backend's
+// gridChargesCalculator.js doc comment for the exact rates/sources). The
+// "i" button reveals the breakdown on hover/focus; the card itself just
+// shows the running total.
+function ChargesStat({ charges }) {
+  const rows = charges
+    ? [
+        ["Brokerage", charges.brokerage],
+        ["STT", charges.stt],
+        ["Exchange Txn Charges", charges.exchangeTxnCharges],
+        ["SEBI Charges", charges.sebiFee],
+        ["Stamp Duty", charges.stampDuty],
+      ]
+    : [];
+
+  return (
+    <div className="group relative rounded-xl border border-gray-200 p-3">
+      <div className="flex items-center gap-1">
+        <p className="text-xs text-gray-500">Total Charges</p>
+        <button
+          type="button"
+          tabIndex={0}
+          aria-label="Charges breakdown"
+          className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-gray-300 text-[9px] font-semibold leading-none text-gray-500 hover:bg-gray-100 focus:outline-none"
+        >
+          i
+        </button>
+      </div>
+      <p className="text-lg font-semibold text-gray-900">{formatINR(charges?.total ?? 0)}</p>
+      {charges?.approximate && <p className="text-xs font-medium text-amber-600">Approximate (segment not exactly modeled)</p>}
+
+      <div className="pointer-events-none absolute left-0 top-full z-10 mt-1 w-56 rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-600 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <p className="mb-1.5 font-semibold text-gray-700">Charges breakdown</p>
+        {rows.map(([label, amount]) => (
+          <div key={label} className="flex items-center justify-between py-0.5">
+            <span>{label}</span>
+            <span className="font-medium text-gray-800">{formatINR(amount)}</span>
+          </div>
+        ))}
+        <div className="mt-1 flex items-center justify-between border-t border-gray-100 pt-1 font-semibold text-gray-800">
+          <span>Total</span>
+          <span>{formatINR(charges?.total ?? 0)}</span>
+        </div>
       </div>
     </div>
   );

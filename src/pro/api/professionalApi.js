@@ -206,6 +206,7 @@ export function createGridSession({
   gridInterval,
   sellVariance,
   quantityPerLevel,
+  sellQuantityPerLevel,
   startingCapital,
   maxPositionSize,
   commissionPct,
@@ -222,6 +223,7 @@ export function createGridSession({
       gridInterval,
       sellVariance,
       quantityPerLevel,
+      sellQuantityPerLevel,
       startingCapital,
       maxPositionSize,
       commissionPct,
@@ -262,14 +264,19 @@ export function listGridTrades(sessionId, { page = 1, limit = 50, skippedOnly = 
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/trades?page=${page}&limit=${limit}${skippedParam}`);
 }
 
-// ADR-034: live-editable config — only allowed while the session is PAUSED
-// (enforced server-side). `useSeparateSellVariance: false` clears a
-// previously-set sellVariance so it mirrors gridInterval again.
-export function updateGridSessionConfig(sessionId, { quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, addCash } = {}) {
+// ADR-034/ADR-035: live-editable config — only allowed while the session is
+// PAUSED (enforced server-side). `useSeparateSellVariance: false` clears a
+// previously-set sellVariance so it mirrors gridInterval again; likewise
+// `useSeparateSellQuantity: false` clears sellQuantityPerLevel so it mirrors
+// quantityPerLevel again.
+export function updateGridSessionConfig(
+  sessionId,
+  { quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, useSeparateSellQuantity, sellQuantityPerLevel, addCash } = {},
+) {
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/config`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, addCash }),
+    body: JSON.stringify({ quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, useSeparateSellQuantity, sellQuantityPerLevel, addCash }),
   });
 }
 

@@ -1732,3 +1732,103 @@ available for any status, confirmation-decline no-ops) — 183/183 real
 tests passing (the pre-existing, unrelated `App.test.js` `react-router/
 dom` resolution failure is unchanged). Both production builds clean. No
 production/shared-database session was touched or migrated.
+
+## ADR-035 — Asymmetric buy/sell quantity; DISPLAY-ONLY statutory/brokerage charges estimate
+
+Status: ACCEPTED (explicit project-owner request)
+
+Decision:
+
+`config.sellQuantityPerLevel` (nullable, default `null`) is a new optional
+field, the exact same mirror pattern ADR-034 established for
+`sellVariance`: `quantityPerLevel` remains the quantity for BUY fills;
+`sellQuantityPerLevel`, when set, is the quantity for SELL fills instead.
+`null`/absent means SELL mirrors `quantityPerLevel`, byte-for-byte
+identical to the pre-ADR-035 behavior. Only `applySell`'s `targetQty`
+changed (`config.sellQuantityPerLevel ?? config.quantityPerLevel`) —
+`applyBuy`, the crossing/rebase/FIFO machinery, and every other engine
+function are untouched. The live-edit endpoint
+(`PATCH .../sessions/:sessionId/config`, ADR-034) gained the same
+`useSeparateSellQuantity`/`sellQuantityPerLevel` pair, still PAUSED-only.
+
+New `services/gridChargesCalculator.js` (pure, no DB/network) computes a
+DISPLAY-ONLY estimate of statutory/brokerage charges — SEBI turnover fee,
+STT, stamp duty, exchange transaction charges, and brokerage — summed
+across a session's whole trade ledger. It NEVER touches cash/holdings/
+realizedPnL; the FIFO/rebase accounting (ADR-031/032), already confirmed
+correct by the project owner as "the benchmark," is completely untouched.
+Rates are Zerodha's published charges (zerodha.com/charges, read
+2026-10-19, cross-checked against a live web search for the current
+post-April-2026-budget STT rates) for the 3 segments this models exactly:
+EQUITY_DELIVERY (₹0 brokerage; 0.1% STT both sides; 0.015% stamp duty buy
+side), FUTURES (flat ₹20/executed order brokerage — the exact value
+specified for this feature, not Zerodha's actual "0.03% or ₹20 whichever
+is lower" rule; 0.05% STT sell side only; 0.002% stamp duty buy side), and
+OPTIONS (flat ₹20/executed order; 0.15% STT sell side on premium; 0.003%
+stamp duty buy side). Exchange transaction charges (NSE rates: 0.00307%
+equity, 0.00183% futures, 0.03553% options on premium) and SEBI charges
+(₹10/crore, all segments) apply on both sides, all segments. A fully
+skipped trade (`qtyFilled: 0`) never incurs a charge.
+
+`config.segmentClass` (immutable, captured once at session creation from
+`marketDataService.getInstrumentMeta()`, same precedent as
+`referencePrice`) classifies the resolved instrument into one of the 3
+modeled segments via `classifySegmentClass()` — the same OPT/CE/PE/FUT/FO
+detection heuristic `marketDataService.js`'s `getFeedModeForInstrumentKey`
+already uses, repurposed for charges instead of WS feed mode. Any segment
+outside the 3 modeled ones (BSE F&O, MCX, etc.) falls back to the FUTURES
+rate structure as the closest structural analogue and sets
+`approximate: true` on the summary, so the UI discloses the
+imprecision rather than implying exactness it doesn't have (MCX in
+particular has no STT at all — a different, unmodeled Commodity
+Transaction Tax — so its estimate is intentionally rougher).
+
+`GET /v2/grid-simulator/sessions/:sessionId` now also returns a `charges`
+field (`getChargesSummary()`, selecting only `type`/`effectivePrice`/
+`fillPrice`/`qtyFilled` from the ledger, same ledger-scan pattern as
+`getTradeCounts`). The frontend renders this as a new "Total Charges"
+stat card (`ChargesStat` in `GridSimulatorDetail.jsx`) showing the
+running total, with an "i" button whose hover/focus tooltip breaks down
+each of the 5 components plus an approximate-segment disclosure when
+flagged.
+
+Reason:
+
+Explicit project-owner request: independently tunable buy/sell quantity
+(mirroring the buy/sell variance split already shipped), and visibility
+into the real-world cost drag a live strategy would actually incur,
+broken into its 5 named statutory/brokerage components with brokerage
+pinned to the exact values given (₹20/order for F&O, ₹0 for equity
+delivery) rather than Zerodha's more complex percentage-or-flat rule.
+
+Consequence:
+
+A session created before this change has `sellQuantityPerLevel: null` and
+`segmentClass: "EQUITY_DELIVERY"` (the schema default) — both are safe,
+inert defaults: SELL fills continue mirroring `quantityPerLevel` exactly
+as before, and the charges card simply reports the equity-delivery
+estimate (brokerage ₹0) for a session whose actual segment was never
+classified. This estimate deliberately does NOT include GST (18% on
+brokerage + SEBI + exchange charges in Zerodha's real breakdown) — the
+project owner's requested component list was exactly these 5, and GST was
+not one of them.
+
+9 new engine tests (sellQuantityPerLevel validation, the exact
+BUY-uses-quantityPerLevel/SELL-uses-sellQuantityPerLevel scenario, and a
+mirror-equivalence test) + new `tests/gridChargesCalculator.test.js` (8
+tests: segment classification including the MCX/BSE-F&O fallback, exact
+per-trade charge amounts for all 3 segments, zero-charge for an
+unfilled/zero-price trade, ledger-wide summation skipping fully-skipped
+trades, the `approximate` flag) + 3 new service tests
+(`updateSessionConfig`'s sellQuantityPerLevel set/clear,
+`getChargesSummary`'s aggregation) + 3 new route tests (PATCH's
+sellQuantityPerLevel success/validation, GET detail's `charges` field).
+Full backend suite: 51 engine + 25 service + 26 route + 8 charges-
+calculator (and every other untouched suite) passing, 504 total checks,
+exit 0. Frontend: new create-form tests (sellQuantityPerLevel
+default-null and checked-with-value paths) + new detail tests (config
+editor's sell-qty pre-fill/submit, the Total Charges card's value/
+breakdown/approximate-disclosure) — 186/186 real tests passing (the
+pre-existing, unrelated `App.test.js` failure is unchanged). Both
+production builds clean. No production/shared-database session was
+touched or migrated.

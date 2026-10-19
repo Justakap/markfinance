@@ -26,6 +26,8 @@ export default function GridSimulatorCreateForm({ onCreated }) {
   const [useSeparateSellVariance, setUseSeparateSellVariance] = useState(false);
   const [sellVariance, setSellVariance] = useState("");
   const [quantityPerLevel, setQuantityPerLevel] = useState(100);
+  const [useSeparateSellQuantity, setUseSeparateSellQuantity] = useState(false);
+  const [sellQuantityPerLevel, setSellQuantityPerLevel] = useState("");
   const [startingCapital, setStartingCapital] = useState(100000);
   const [maxPositionSize, setMaxPositionSize] = useState("");
   const [commissionPct, setCommissionPct] = useState(DEFAULT_COMMISSION_PCT);
@@ -54,6 +56,10 @@ export default function GridSimulatorCreateForm({ onCreated }) {
       setError("Sell variance must be a positive number");
       return;
     }
+    if (useSeparateSellQuantity && !(Number.isInteger(Number(sellQuantityPerLevel)) && Number(sellQuantityPerLevel) > 0)) {
+      setError("Sell quantity must be a positive integer");
+      return;
+    }
     if (hasStartingHoldings && !(Number.isFinite(Number(startingAvgCost)) && Number(startingAvgCost) > 0)) {
       setError("Average purchase price is required when starting holdings are greater than zero");
       return;
@@ -67,6 +73,7 @@ export default function GridSimulatorCreateForm({ onCreated }) {
         gridInterval: Number(gridInterval),
         sellVariance: useSeparateSellVariance ? Number(sellVariance) : null,
         quantityPerLevel: Number(quantityPerLevel),
+        sellQuantityPerLevel: useSeparateSellQuantity ? Number(sellQuantityPerLevel) : null,
         startingCapital: Number(startingCapital),
         maxPositionSize: maxPositionSize === "" ? null : Number(maxPositionSize),
         commissionPct: Number(commissionPct),
@@ -138,12 +145,30 @@ export default function GridSimulatorCreateForm({ onCreated }) {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Quantity per Level</label>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Quantity per Level / Buy Qty</label>
           <input
             type="number"
             value={quantityPerLevel}
             onChange={(e) => setQuantityPerLevel(e.target.value)}
             className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+            <input
+              type="checkbox"
+              checked={useSeparateSellQuantity}
+              onChange={(e) => setUseSeparateSellQuantity(e.target.checked)}
+            />
+            Use a different Sell Qty
+          </label>
+          <input
+            type="number"
+            value={sellQuantityPerLevel}
+            onChange={(e) => setSellQuantityPerLevel(e.target.value)}
+            disabled={!useSeparateSellQuantity}
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            placeholder={useSeparateSellQuantity ? "e.g. 50" : "Mirrors Buy Qty"}
           />
         </div>
         <div>

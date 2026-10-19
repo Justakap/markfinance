@@ -167,4 +167,34 @@ describe("GridSimulatorCreateForm", () => {
       expect.objectContaining({ gridInterval: 3, sellVariance: 5 }),
     ));
   });
+
+  test("sellQuantityPerLevel defaults to null (mirrors buy qty) when 'Use a different Sell Qty' is left unchecked", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s5" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ quantityPerLevel: 100, sellQuantityPerLevel: null }),
+    ));
+  });
+
+  test("checking 'Use a different Sell Qty' requires and submits a positive sellQuantityPerLevel", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s6" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Use a different Sell Qty"));
+
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    expect(await screen.findByText(/Sell quantity must be a positive integer/)).toBeInTheDocument();
+    expect(professionalApi.createGridSession).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. 50"), { target: { value: "50" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ quantityPerLevel: 100, sellQuantityPerLevel: 50 }),
+    ));
+  });
 });

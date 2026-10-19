@@ -294,13 +294,18 @@ describe("GridSimulatorDetail", () => {
   });
 
   test("the config editor appears while PAUSED, pre-filled from the current config, and submits a patch", async () => {
-    professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "PAUSED", config: { referencePrice: 340, referenceCapturedAt: "2026-01-01T09:00:00.000Z", gridInterval: 3, sellVariance: 6, quantityPerLevel: 100 } }));
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      status: "PAUSED",
+      config: { referencePrice: 340, referenceCapturedAt: "2026-01-01T09:00:00.000Z", gridInterval: 3, sellVariance: 6, quantityPerLevel: 100, sellQuantityPerLevel: 40 },
+    }));
     professionalApi.updateGridSessionConfig.mockResolvedValue({ session: {} });
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
     await waitFor(() => screen.getByText("GICRE"));
 
     fireEvent.click(screen.getByText("Edit"));
     expect(screen.getByDisplayValue("100")).toBeInTheDocument(); // quantityPerLevel pre-filled
+    expect(screen.getByDisplayValue("40")).toBeInTheDocument(); // sellQuantityPerLevel pre-filled
+    expect(screen.getByLabelText("Use a different Sell Qty")).toBeChecked(); // sellQuantityPerLevel was already set -> checkbox pre-checked
     expect(screen.getByDisplayValue("3")).toBeInTheDocument(); // gridInterval pre-filled
     expect(screen.getByDisplayValue("6")).toBeInTheDocument(); // sellVariance pre-filled
     expect(screen.getByLabelText("Use a different Sell Variance")).toBeChecked(); // sellVariance was already set -> checkbox pre-checked
@@ -309,7 +314,14 @@ describe("GridSimulatorDetail", () => {
 
     await waitFor(() => expect(professionalApi.updateGridSessionConfig).toHaveBeenCalledWith(
       "s1",
-      expect.objectContaining({ quantityPerLevel: 100, gridInterval: 3, useSeparateSellVariance: true, sellVariance: 6 }),
+      expect.objectContaining({
+        quantityPerLevel: 100,
+        useSeparateSellQuantity: true,
+        sellQuantityPerLevel: 40,
+        gridInterval: 3,
+        useSeparateSellVariance: true,
+        sellVariance: 6,
+      }),
     ));
     unmount();
   });
@@ -325,6 +337,24 @@ describe("GridSimulatorDetail", () => {
 
     const { showError } = require("../../utils/toast");
     await waitFor(() => expect(showError).toHaveBeenCalledWith("Pause the session before editing its configuration"));
+    unmount();
+  });
+
+  test("Total Charges card (ADR-035) shows the running total and a hover breakdown, with an approximate-segment disclosure when flagged", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      charges: { brokerage: 20, stt: 5.5, exchangeTxnCharges: 1.2, sebiFee: 0.1, stampDuty: 0.6, total: 27.4, segmentClass: "FUTURES", approximate: true },
+    }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+
+    expect(screen.getByText("Total Charges")).toBeInTheDocument();
+    expect(screen.getAllByText("₹27.40").length).toBeGreaterThan(0); // appears in both the card and the hover breakdown's total row
+    expect(screen.getByText(/Approximate \(segment not exactly modeled\)/)).toBeInTheDocument();
+    expect(screen.getByText("Brokerage")).toBeInTheDocument();
+    expect(screen.getByText("STT")).toBeInTheDocument();
+    expect(screen.getByText("Exchange Txn Charges")).toBeInTheDocument();
+    expect(screen.getByText("SEBI Charges")).toBeInTheDocument();
+    expect(screen.getByText("Stamp Duty")).toBeInTheDocument();
     unmount();
   });
 });
