@@ -260,20 +260,6 @@ export function listGridTrades(sessionId, { page = 1, limit = 50, skippedOnly = 
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/trades?page=${page}&limit=${limit}${skippedParam}`);
 }
 
-/** Lets the browser push a price it already has (e.g. from its own live
- *  Socket.IO marketTick subscription) for lower latency — purely an
- *  optional accelerant; the backend's event-driven real-time processor
- *  (services/gridSimulatorRealtime.js, genuine Upstox WebSocket ticks
- *  only) is authoritative and keeps a session progressing with no tab
- *  open at all. The backend always server-stamps its own eventTimestamp. */
-export function submitGridTick(sessionId, { price }) {
-  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/tick`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ price }),
-  });
-}
-
 /**
  * Grid Backtest — PAPER TRADING / HISTORICAL SIMULATION ONLY.
  * /api/v2/grid-backtest/*. Shares the dynamic-reference grid engine with

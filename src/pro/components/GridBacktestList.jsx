@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listGridBacktests } from "../api/professionalApi";
 import { showError } from "../../utils/toast";
+import { formatINR, formatPercent } from "../../utils/indianFormat";
 
 const PAGE_SIZE = 20;
 
@@ -9,10 +10,6 @@ const STATUS_BADGE = {
   COMPLETED: "bg-green-100 text-green-700",
   FAILED: "bg-red-100 text-red-700",
 };
-
-function fmt(value, digits = 2) {
-  return Number.isFinite(value) ? Number(value).toFixed(digits) : "--";
-}
 
 /**
  * Grid Backtest (PAPER TRADING / HISTORICAL SIMULATION ONLY) — backtest
@@ -107,9 +104,9 @@ export default function GridBacktestList({ onOpenBacktest, onCreateClick, refres
                     </span>
                   </td>
                   <td className={`p-2 ${item.metrics?.netPnL >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    {item.metrics?.netPnL != null ? `₹${fmt(item.metrics.netPnL)}` : "--"}
+                    {formatINR(item.metrics?.netPnL)}
                   </td>
-                  <td className="p-2">{item.metrics?.returnPct != null ? `${fmt(item.metrics.returnPct)}%` : "--"}</td>
+                  <td className="p-2">{formatPercent(item.metrics?.returnPct)}</td>
                   <td className="p-2 text-xs text-gray-400">{item.createdAt ? new Date(item.createdAt).toLocaleString() : "--"}</td>
                 </tr>
               ))}

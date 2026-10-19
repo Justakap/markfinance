@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getGridBacktest, listGridBacktestTrades } from "../api/professionalApi";
+import { formatINR, formatQuantity, formatPercent } from "../../utils/indianFormat";
 
 const TRADE_PAGE_SIZE = 50;
 
@@ -8,10 +9,6 @@ const STATUS_BADGE = {
   COMPLETED: "bg-green-100 text-green-700",
   FAILED: "bg-red-100 text-red-700",
 };
-
-function fmt(value, digits = 2) {
-  return Number.isFinite(value) ? Number(value).toFixed(digits) : "--";
-}
 
 function fmtDate(value) {
   return value ? new Date(value).toLocaleString() : "--";
@@ -99,7 +96,7 @@ export default function GridBacktestDetail({ backtestId, onBack }) {
           <div className="rounded-xl border border-gray-200 p-4 text-sm">
             <h3 className="mb-2 font-semibold text-gray-700">Initial Reference &amp; Data Quality</h3>
             <p className="text-gray-600">
-              Initial reference: ₹{fmt(initialReference?.price)} at {fmtDate(initialReference?.timestamp)} (the close
+              Initial reference: {formatINR(initialReference?.price)} at {fmtDate(initialReference?.timestamp)} (the close
               of the first available historical candle in the requested range — never the current live quote).
             </p>
             <p className="mt-1 text-gray-600">
@@ -133,18 +130,18 @@ export default function GridBacktestDetail({ backtestId, onBack }) {
           </div>
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Starting Cash" value={`₹${fmt(config?.startingCapital)}`} />
-            <Stat label="Ending Equity" value={`₹${fmt(metrics?.endingEquity)}`} />
-            <Stat label="Net P&amp;L" value={`₹${fmt(metrics?.netPnL)}`} tone={metrics?.netPnL >= 0 ? "pos" : "neg"} />
-            <Stat label="Return %" value={metrics?.returnPct != null ? `${fmt(metrics.returnPct)}%` : "--"} tone={metrics?.returnPct >= 0 ? "pos" : "neg"} />
-            <Stat label="Realized P&amp;L" value={`₹${fmt(metrics?.realizedPnL)}`} tone={metrics?.realizedPnL >= 0 ? "pos" : "neg"} />
-            <Stat label="Unrealized P&amp;L" value={`₹${fmt(metrics?.unrealizedPnL)}`} tone={metrics?.unrealizedPnL >= 0 ? "pos" : "neg"} />
-            <Stat label="Buys / Sells" value={`${metrics?.buyCount ?? 0} / ${metrics?.sellCount ?? 0}`} />
-            <Stat label="Partial / Skipped" value={`${metrics?.partialCount ?? 0} / ${metrics?.skippedCount ?? 0}`} />
-            <Stat label="Total Costs" value={`₹${fmt(metrics?.totalCosts)}`} />
-            <Stat label="Max Drawdown" value={metrics?.maxDrawdownPct != null ? `${fmt(metrics.maxDrawdownPct)}%` : "--"} />
-            <Stat label="Max Capital Deployed" value={`₹${fmt(metrics?.maxCapitalDeployed)}`} />
-            <Stat label="Fills" value={tradesTotal} />
+            <Stat label="Starting Cash" value={formatINR(config?.startingCapital)} />
+            <Stat label="Ending Equity" value={formatINR(metrics?.endingEquity)} />
+            <Stat label="Net P&amp;L" value={formatINR(metrics?.netPnL)} tone={metrics?.netPnL >= 0 ? "pos" : "neg"} />
+            <Stat label="Return %" value={formatPercent(metrics?.returnPct)} tone={metrics?.returnPct >= 0 ? "pos" : "neg"} />
+            <Stat label="Realized P&amp;L" value={formatINR(metrics?.realizedPnL)} tone={metrics?.realizedPnL >= 0 ? "pos" : "neg"} />
+            <Stat label="Unrealized P&amp;L" value={formatINR(metrics?.unrealizedPnL)} tone={metrics?.unrealizedPnL >= 0 ? "pos" : "neg"} />
+            <Stat label="Buys / Sells" value={`${formatQuantity(metrics?.buyCount ?? 0)} / ${formatQuantity(metrics?.sellCount ?? 0)}`} />
+            <Stat label="Partial / Skipped" value={`${formatQuantity(metrics?.partialCount ?? 0)} / ${formatQuantity(metrics?.skippedCount ?? 0)}`} />
+            <Stat label="Total Costs" value={formatINR(metrics?.totalCosts)} />
+            <Stat label="Max Drawdown" value={formatPercent(metrics?.maxDrawdownPct)} />
+            <Stat label="Max Capital Deployed" value={formatINR(metrics?.maxCapitalDeployed)} />
+            <Stat label="Trade Events" value={formatQuantity(tradesTotal)} />
           </div>
 
           {Array.isArray(equitySeries) && equitySeries.length > 0 && (
@@ -178,11 +175,11 @@ export default function GridBacktestDetail({ backtestId, onBack }) {
                       <tr key={trade.tradeId || `seq-${trade.sequence}`} className="border-t border-gray-100">
                         <td className={`p-2 font-medium ${trade.type === "BUY" ? "text-green-700" : "text-red-700"}`}>{trade.type}</td>
                         <td className="p-2">
-                          {trade.levelPrice}
+                          {formatINR(trade.levelPrice)}
                           {trade.gapFill && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">GAP</span>}
                         </td>
                         <td className="p-2">
-                          ₹{fmt(trade.fillPrice)}
+                          {formatINR(trade.fillPrice)}
                           {trade.assumedIntrabar && (
                             <span className="ml-1 rounded bg-gray-100 px-1 text-[10px] text-gray-500" title="Assumed intrabar path, not an observed tick">
                               ASSUMED
@@ -190,10 +187,10 @@ export default function GridBacktestDetail({ backtestId, onBack }) {
                           )}
                         </td>
                         <td className="p-2">
-                          {trade.qtyRequested} / {trade.qtyFilled} / {trade.qtySkipped > 0 ? trade.qtySkipped : "--"}
+                          {formatQuantity(trade.qtyRequested)} / {formatQuantity(trade.qtyFilled)} / {trade.qtySkipped > 0 ? formatQuantity(trade.qtySkipped) : "--"}
                         </td>
-                        <td className="p-2">₹{fmt(trade.cashAfter)}</td>
-                        <td className="p-2">{trade.holdingsAfter}</td>
+                        <td className="p-2">{formatINR(trade.cashAfter)}</td>
+                        <td className="p-2">{formatQuantity(trade.holdingsAfter)}</td>
                         <td className="p-2 text-xs text-gray-500">{trade.reason || "--"}</td>
                         <td className="p-2 text-xs text-gray-400">
                           {fmtDate(trade.candleTimestamp)}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listGridSessions } from "../api/professionalApi";
 import { showError } from "../../utils/toast";
+import { formatINR, formatQuantity } from "../../utils/indianFormat";
 
 const PAGE_SIZE = 20;
 
@@ -112,9 +113,9 @@ export default function GridSimulatorList({ onOpenSession, onCreateClick, refres
                   className="cursor-pointer border-t border-gray-100 hover:bg-gray-50"
                 >
                   <td className="p-2 font-medium text-blue-700">{item.symbol}</td>
-                  <td className="p-2">{item.config?.referencePrice}</td>
-                  <td className="p-2">{item.config?.gridInterval}</td>
-                  <td className="p-2">{item.config?.quantityPerLevel}</td>
+                  <td className="p-2">{formatINR(item.config?.referencePrice)}</td>
+                  <td className="p-2">{formatINR(item.config?.gridInterval)}</td>
+                  <td className="p-2">{formatQuantity(item.config?.quantityPerLevel)}</td>
                   <td className="p-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[item.status] || ""}`}>
                       {item.status}

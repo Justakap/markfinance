@@ -158,6 +158,45 @@ describe("GridSimulatorDetail", () => {
     unmount();
   });
 
+  test("a duplicate/replayed gridSimulatorUpdate push (same trade sequence) never renders or counts the trade twice", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    let pushUpdate;
+    onGridSimulatorUpdate.mockImplementation((callback) => {
+      pushUpdate = callback;
+      return jest.fn();
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+
+    const update = {
+      sessionId: "s1",
+      status: "ACTIVE",
+      state: { lastPrice: 333, lastEventTimestamp: new Date().toISOString(), sequence: 2 },
+      portfolio: { cash: 66400, holdings: 200, avgCost: 335, realizedPnL: 0, unrealizedPnL: 0, equity: 66400 },
+      trades: [{ tradeId: "t1", type: "BUY", level: -2, levelPrice: 334, fillPrice: 333, qtyFilled: 100, qtySkipped: 0, sequence: 2, eventTimestamp: "2026-01-01T09:16:00.000Z" }],
+    };
+
+    function tradeEventsValue() {
+      return screen.getByText("Trade Events").closest("div").querySelector("p:last-child").textContent;
+    }
+
+    pushUpdate(update);
+    await waitFor(() => expect(screen.getAllByText("₹333.00").length).toBe(1));
+    expect(tradeEventsValue()).toBe("1");
+
+    // The identical trade is pushed again (e.g. a reconnect replaying a
+    // buffered event, or an overlapping listener firing twice).
+    pushUpdate(update);
+
+    // Still exactly one ledger row for this trade, and the Trade Events
+    // count did not increment a second time for the duplicate.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(screen.getAllByText("₹333.00").length).toBe(1);
+    expect(tradeEventsValue()).toBe("1");
+    unmount();
+  });
+
   test("ignores a gridSimulatorUpdate for a different session id", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     let pushUpdate;

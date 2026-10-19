@@ -99,7 +99,7 @@ describe("GridBacktestDetail", () => {
     expect(screen.getByText(/PAPER TRADING \/ HISTORICAL SIMULATION ONLY/)).toBeInTheDocument();
     expect(screen.getByText(/Initial reference: ₹320\.00/)).toBeInTheDocument();
     expect(screen.getByText("Ending Equity")).toBeInTheDocument();
-    expect(screen.getByText("₹101200.00")).toBeInTheDocument();
+    expect(screen.getByText("₹1,01,200.00")).toBeInTheDocument(); // Indian grouping
   });
 
   test("discloses the conservative intrabar assumption when no finer-grained candles were used", async () => {

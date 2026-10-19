@@ -1316,3 +1316,174 @@ backend tests total, full suite passing. No production/shared-database
 test was run (explicit safety constraint, per the task and the prior
 session's discovery of a real active user session in production) — all
 tests use in-memory fakes, consistent with ADR-023/ADR-024's precedent.
+
+## ADR-028 — The frontend-pushed /tick endpoint is display-only; a client-relayed price must never drive the authoritative crossing engine
+
+Status: ACCEPTED
+
+Decision:
+
+`POST /v2/grid-simulator/sessions/:sessionId/tick` no longer calls
+`processTick()` (the authoritative crossing engine). It now only updates
+`lastFeedCheckAt`/`lastFeedPrice` when the session is ACTIVE and returns
+`{skipped: true, reason: "client_tick_display_only", trades: []}` —
+exactly the same "display/feed-health only" treatment ADR-023 already
+applies to a REST-fallback price. The frontend's corresponding push
+(`GridSimulatorDetail.jsx`'s `onMarketTick` → `submitGridTick`) was
+removed entirely, along with the now-dead `submitGridTick` export in
+`professionalApi.js`.
+
+Reason:
+
+Root-caused a reported production symptom: repeated SELL (or BUY)
+ledger events at the identical grid level within seconds, each with a
+slightly different observed price and `reason: insufficient_holdings`/
+`insufficient_cash`. Reproduced directly against the real
+`gridSimulatorService.processTick()`/`gridSimulatorEngine.processPriceUpdate()`
+(not a simplified stand-in): a genuine WS tick crosses a level and
+disarms it; moments later the frontend's throttled (1/sec) accelerant
+tick relays whatever price its own Socket.IO subscription last
+observed — which can be STALE or simply out of true order relative to
+what the backend's own WS-driven processor already processed a moment
+earlier. Because this endpoint always server-stamps a fresh, LATER
+timestamp, the engine's dedup watermark (which only rejects a tick
+timestamped at-or-before the last-processed one) accepted it as a
+"genuine new price update." If that stale price happened to sit on the
+opposite side of the just-disarmed level, it re-armed it — and the very
+next genuine WS tick re-fired the identical signal. This is a design
+flaw (two uncoordinated, unsynchronized sources of "genuine" price
+feeding one authoritative state machine), not a locking/concurrency bug:
+the existing claim-lock and timestamp watermark both worked exactly as
+designed throughout.
+
+Consequence:
+
+The backend's own event-driven WS processor (`gridSimulatorRealtime.js`)
+was already fully sufficient on its own — it keeps a session progressing
+with zero browser tabs open, per its own original design intent — so
+removing this endpoint's trading authority has no functional loss, only
+removes a latent correctness hazard. 7 new regression tests
+(`tests/gridSimulatorRealtime.test.js`, lettered A/B/C/E/F/H matching
+this milestone's required test list) reproduce and then prove the fix
+for: non-crossing fluctuation, insufficient-holdings skip + reference
+advancement, a later genuine re-arm + re-cross, overlapping/duplicate
+tick dispatch, a stale/out-of-order tick, and restart/resync — all
+exercised through the real engine and real-time processor, not mocks of
+the crossing logic itself. The route-level test suite was updated to
+match the new display-only contract (`tests/gridSimulatorRoutes.test.js`).
+
+## ADR-029 — Socket.IO portfolio pushes always recompute the full metrics snapshot from one source; frontend applies it as a full replace, not a field merge
+
+Status: ACCEPTED
+
+Decision:
+
+`gridSimulatorRealtime.js`'s `buildUpdatePayload()` now calls the same
+`computePortfolioMetrics()` the REST detail route uses, from the single
+just-persisted `sessionDoc`, and sends the complete result
+(`cash/holdings/avgCost/realizedPnL/unrealizedPnL/marketValue/equity`)
+as `payload.portfolio` on every push — including the display-only
+feed-status pushes. `GridSimulatorDetail.jsx`'s Socket.IO handler now
+does `portfolio: payload.portfolio ?? prev.portfolio` (a full replace)
+instead of `{...prev.portfolio, ...payload.portfolio}` (a field-by-field
+merge).
+
+Reason:
+
+Root-caused a second reported production symptom: the dashboard's
+displayed Equity and Unrealized P&L did not reconcile with its own
+displayed Cash/Holdings/Avg Cost/Last Price using the documented
+formulas (`equity = cash + holdings*price`,
+`unrealizedPnL = holdings*(price-avgCost)`) — confirmed these formulas
+are correct by directly hand-verifying `computePortfolioMetrics()` in
+isolation against the exact reported numbers (a synthetic fixture, not
+a connection to the real session/production DB), which matched by hand.
+The actual bug: `buildUpdatePayload()` never included `equity`/
+`unrealizedPnL`/`marketValue` in its `portfolio` object at all — only
+`cash`/`holdings`/`avgCost`/`realizedPnL`. The frontend's field-merge
+then silently preserved whatever `equity`/`unrealizedPnL` value was
+already in state from an EARLIER push, while `cash`/`holdings`/`avgCost`
+kept advancing with every new push — an internally inconsistent
+snapshot mixing fresh and stale fields, which is exactly what produced
+numbers that don't reconcile by the documented formulas.
+
+Consequence:
+
+Every push is now a single, internally-consistent valuation snapshot —
+structurally impossible for `equity`/`unrealizedPnL` to lag behind
+`cash`/`holdings`/`avgCost` again, since they're always computed
+together from the same `state` object and pushed/replaced together.
+Also renamed the "Fills" stat (both `GridSimulatorDetail.jsx` and
+`GridBacktestDetail.jsx`) to "Trade Events" — it counts every persisted
+ledger row (including zero-qty skipped ones), not executed fills, and
+the old label implied otherwise. New regression test
+(`tests/gridSimulatorRealtime.test.js`, "I.") pushes a crossing then a
+non-crossing price move and asserts `equity`/`unrealizedPnL` are
+re-priced against the latest price on every single push, never stale.
+New `src/utils/indianFormat.js` (Intl.NumberFormat 'en-IN'-based
+`formatINR`/`formatIndianNumber`/`formatQuantity`/`formatPercent`,
+tested against the task's own worked examples including the
+₹99,96,512.60 reconciled-equity figure) replaces ad hoc
+`${fmt(...)}`-style helpers in the Grid Simulator and Grid Backtest
+list/detail components — applied only to those surfaces in this pass;
+broader adoption across Stock Analysis/Greek/other pages was not
+attempted here (out of scope for this bug-fix pass, flagged as
+follow-up work).
+
+No production/shared-database session was read or mutated to diagnose
+either bug — both were reproduced and fixed using synthetic fixtures and
+direct unit-level verification of the pure accounting functions, per
+this milestone's explicit safety constraint. The reported production
+session's own historical ledger was never inspected and cannot be
+independently reconciled from this environment; if it needs a real
+audit, that requires either a database export or direct, read-only
+production access explicitly granted for that purpose.
+
+## Independent review of ADR-028/ADR-029 (no code defects found; added cross-path integration coverage)
+
+Status: ACCEPTED (review only)
+
+Re-verified every claim in the ADR-028/ADR-029 report against the actual
+current code (not memory of having written it): the `/tick` route has
+no remaining call to `processTick`; the frontend has no remaining
+`submitGridTick`/`onMarketTick` accelerant code; the real-time
+processor's REST-fallback branch is untouched and still display-only;
+`processTick` is now only ever invoked from the genuine-WS branch of
+`gridSimulatorRealtime.js`; REST and Socket.IO both derive `portfolio`
+from the identical `computePortfolioMetrics()` call. No defect found in
+any of these.
+
+Added one gap this review specifically targeted: a cross-path
+integration test (`tests/gridSimulatorCrossPathConsistency.test.js`,
+new, registered in `package.json`) that drives real engine events
+through `gridSimulatorService`/`gridSimulatorRealtime` together against
+one shared fake store, then asserts the REST detail payload and the
+last Socket.IO push payload are `deepStrictEqual` for `portfolio` — the
+previous round's tests verified each path's correctness in isolation
+but never cross-checked that both paths agree for the identical
+underlying state.
+
+Two pre-existing, lower-severity items noted but NOT fixed in this
+review (out of scope — "do not perform a broad refactor", not caused by
+ADR-028/029, and low-impact):
+
+1. `lastFeedStatus`/`lastFeedPrice` writes in the REST-fallback branch
+   of `processSessionTick()` are not covered by the `processingLockedUntil`
+   claim lock (only the genuine-WS branch's `processTick()` claims it),
+   so a REST-fallback event racing a genuine WS tick for the same session
+   could have its feed-status write land after the WS branch's — a
+   cosmetic badge-flicker risk only; it cannot affect cash/holdings/
+   avgCost/equity/realizedPnL/unrealizedPnL, which are only ever written
+   by the locked path.
+2. The frontend's Socket.IO trade-ledger merge
+   (`GridSimulatorDetail.jsx`, `setTrades((prev) => [...relevant].reverse().concat(prev)...)`)
+   has no dedup-by-`tradeId` — a reconnect's `load()` (full REST replace)
+   racing a late-buffered push for the same already-fetched trade could
+   theoretically render one row twice for one render cycle. This
+   predates ADR-028/029 and is a frontend-only display risk (no
+   duplicate ledger row is ever persisted backend-side) — flagged as a
+   candidate follow-up, not fixed here.
+
+Full backend suite: exit 0. Full frontend suite: 164/164 real tests
+passing (pre-existing BLOCKER-004 `App.test.js` failure unchanged).
+Production build clean. No live browser verification was performed.

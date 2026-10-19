@@ -6,10 +6,10 @@ import {
   pauseGridSession,
   resumeGridSession,
   stopGridSession,
-  submitGridTick,
 } from "../api/professionalApi";
 import { showError, showSuccess, confirmAction } from "../../utils/toast";
-import { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } from "../../utils/socket";
+import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } from "../../utils/socket";
+import { formatINR, formatQuantity } from "../../utils/indianFormat";
 import GridLevelsChart from "./GridLevelsChart";
 
 // Backstop reconciliation only — the real update path is Socket.IO
@@ -41,8 +41,15 @@ const CONNECTION_BADGE = {
   disconnected: "bg-red-100 text-red-700",
 };
 
-function fmt(value, digits = 2) {
-  return Number.isFinite(value) ? Number(value).toFixed(digits) : "--";
+// Stable per-trade identity across both sources: REST's tradeSummary()
+// includes a real Mongo tradeId, but a Socket.IO-pushed trade currently
+// does not (gridSimulatorService.processTick() returns the pre-insert
+// trade objects, never re-reads the inserted _id). `sequence` is a
+// monotonically-increasing, unique-per-session counter assigned BEFORE
+// insert either way, so it is always present and stable on both sources —
+// prefer tradeId when available, fall back to sequence otherwise.
+function tradeIdentity(trade) {
+  return trade.tradeId != null ? `id:${trade.tradeId}` : `seq:${trade.sequence}`;
 }
 
 /**
@@ -55,11 +62,18 @@ function fmt(value, digits = 2) {
  * event-driven real-time processor (services/gridSimulatorRealtime.js)
  * pushes a state/trade update the moment it processes a genuine Upstox
  * WebSocket tick, never a global broadcast of this session's private
- * data. The browser ALSO still pushes its own already-open `marketTick`
- * ticks to POST .../tick as an optional, purely additive low-latency
- * accelerant — the backend path is authoritative regardless, and the
- * server-side real-time processor keeps working with zero browser tabs
- * open at all.
+ * data. The server-side real-time processor keeps working with zero
+ * browser tabs open at all.
+ *
+ * This component does NOT also push its own observed `marketTick` prices
+ * to the backend (it used to, as a "low-latency accelerant" into
+ * POST .../tick). That was removed (ADR-028, backend) after it was found
+ * to cause repeated/duplicate skipped trades: a browser-relayed price can
+ * be stale or out of true order relative to what the backend's own WS
+ * processor already processed, and the engine's dedup watermark only
+ * rejects an exact-or-earlier TIMESTAMP, not a stale PRICE value — so a
+ * late, lower-than-current price could re-arm an already-disarmed grid
+ * level, causing the next genuine tick to re-fire the same signal.
  *
  * A 30s reconciliation poll and a REST reload on every socket reconnect
  * are the backstop against a silently-missed event — Socket.IO is the
@@ -74,7 +88,6 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [error, setError] = useState("");
   const [actionPending, setActionPending] = useState(false);
   const [connectionState, setConnectionState] = useState("disconnected");
-  const lastTickSentRef = useRef(0);
   const mountedRef = useRef(true);
   const skippedOnlyRef = useRef(skippedOnly);
   skippedOnlyRef.current = skippedOnly;
@@ -132,15 +145,34 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
               lastFeedCheckAt: payload.lastFeedCheckAt ?? prev.lastFeedCheckAt,
               lastFeedPrice: payload.lastFeedPrice ?? prev.lastFeedPrice,
               state: { ...prev.state, ...payload.state },
-              portfolio: { ...prev.portfolio, ...payload.portfolio },
+              // Full replace, not a field-by-field merge: the backend
+              // always computes portfolio (cash/holdings/avgCost/equity/
+              // unrealizedPnL/marketValue) from one single persisted
+              // snapshot, so every push already carries the complete,
+              // internally-consistent set. Merging previously let a
+              // partial payload silently keep a stale equity/
+              // unrealizedPnL alongside freshly-updated cash/holdings —
+              // the root cause of a reported dashboard discrepancy.
+              portfolio: payload.portfolio ?? prev.portfolio,
             }
           : prev,
       );
       if (payload.trades?.length) {
         const relevant = payload.trades.filter((t) => !skippedOnlyRef.current || t.qtySkipped > 0);
         if (relevant.length) {
-          setTrades((prev) => [...relevant].reverse().concat(prev).slice(0, TRADE_PAGE_SIZE));
-          setTradesTotal((prev) => prev + relevant.length);
+          // Dedup by stable identity: a reconnect's full REST reload
+          // (load()) and a late-buffered/replayed Socket.IO push can both
+          // deliver the same already-known trade — never render (or count)
+          // it twice, while still allowing genuinely distinct trades.
+          const newCountRef = { current: 0 };
+          setTrades((prev) => {
+            const known = new Set(prev.map(tradeIdentity));
+            const newOnes = relevant.filter((t) => !known.has(tradeIdentity(t)));
+            newCountRef.current = newOnes.length;
+            if (!newOnes.length) return prev;
+            return [...newOnes].reverse().concat(prev).slice(0, TRADE_PAGE_SIZE);
+          });
+          setTradesTotal((prev) => prev + newCountRef.current);
         }
       }
     });
@@ -163,22 +195,6 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
-
-  useEffect(() => {
-    if (!session || session.status !== "ACTIVE") return undefined;
-    const unsubscribe = onMarketTick((tick) => {
-      if (tick?.instrumentKey !== session.instrumentKey) return;
-      const price = tick.ltp ?? tick.price;
-      if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;
-      const now = Date.now();
-      if (now - lastTickSentRef.current < 1000) return; // light client-side throttle
-      lastTickSentRef.current = now;
-      submitGridTick(sessionId, { price: Number(price) }).catch(() => {
-        // Non-fatal — the backend's own poll loop will catch up regardless.
-      });
-    });
-    return unsubscribe;
-  }, [session, sessionId]);
 
   async function handleTransition(action, label) {
     setActionPending(true);
@@ -223,8 +239,8 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
         <div>
           <h2 className="text-lg font-semibold text-gray-900">{session.symbol}</h2>
           <p className="text-xs text-gray-500">
-            Initial reference ₹{fmt(config.referencePrice)} (captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
-            Grid ₹{config.gridInterval} · Qty/level {config.quantityPerLevel}
+            Initial reference {formatINR(config.referencePrice)} (immutable, captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
+            Grid {formatINR(config.gridInterval)} · Qty/level {formatQuantity(config.quantityPerLevel)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -263,14 +279,14 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Cash" value={`₹${fmt(portfolio?.cash)}`} />
-        <Stat label="Holdings" value={portfolio?.holdings ?? 0} />
-        <Stat label="Avg Cost" value={`₹${fmt(portfolio?.avgCost)}`} />
-        <Stat label="Equity" value={portfolio?.equity != null ? `₹${fmt(portfolio.equity)}` : "--"} />
-        <Stat label="Realized P&L" value={`₹${fmt(portfolio?.realizedPnL)}`} tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"} />
-        <Stat label="Unrealized P&L" value={`₹${fmt(portfolio?.unrealizedPnL)}`} tone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"} />
-        <Stat label="Last Price" value={lastFeedPrice != null ? `₹${fmt(lastFeedPrice)}` : state?.lastPrice != null ? `₹${fmt(state.lastPrice)}` : "--"} />
-        <Stat label="Fills" value={tradesTotal} />
+        <Stat label="Cash" value={formatINR(portfolio?.cash)} />
+        <Stat label="Holdings" value={formatQuantity(portfolio?.holdings ?? 0)} />
+        <Stat label="Avg Cost" value={formatINR(portfolio?.avgCost)} />
+        <Stat label="Equity" value={formatINR(portfolio?.equity)} />
+        <Stat label="Realized P&L" value={formatINR(portfolio?.realizedPnL)} tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"} />
+        <Stat label="Unrealized P&L" value={formatINR(portfolio?.unrealizedPnL)} tone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"} />
+        <Stat label="Last Price" value={formatINR(lastFeedPrice ?? state?.lastPrice)} />
+        <Stat label="Trade Events" value={formatQuantity(tradesTotal)} />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">
@@ -307,12 +323,12 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
                   <tr key={trade.tradeId || `seq-${trade.sequence}`} className="border-t border-gray-100">
                     <td className={`p-2 font-medium ${trade.type === "BUY" ? "text-green-700" : "text-red-700"}`}>{trade.type}</td>
                     <td className="p-2">
-                      {trade.levelPrice}
+                      {formatINR(trade.levelPrice)}
                       {trade.gapFill && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">GAP</span>}
                     </td>
-                    <td className="p-2">₹{fmt(trade.fillPrice)}</td>
-                    <td className="p-2">{trade.qtyFilled}</td>
-                    <td className="p-2">{trade.qtySkipped > 0 ? trade.qtySkipped : "--"}</td>
+                    <td className="p-2">{formatINR(trade.fillPrice)}</td>
+                    <td className="p-2">{formatQuantity(trade.qtyFilled)}</td>
+                    <td className="p-2">{trade.qtySkipped > 0 ? formatQuantity(trade.qtySkipped) : "--"}</td>
                     <td className="p-2 text-xs text-gray-500">{trade.reason || "--"}</td>
                     <td className="p-2 text-xs text-gray-400">{new Date(trade.eventTimestamp).toLocaleString()}</td>
                   </tr>
