@@ -40,8 +40,13 @@ export default function GridLevelsChart({ config, trades, currentPrice, activeRe
     }
   }
 
-  const buyPoints = filled.filter((t) => t.type === "BUY").map((t) => ({ x: t.sequence, y: t.fillPrice, qty: t.qtyFilled }));
-  const sellPoints = filled.filter((t) => t.type === "SELL").map((t) => ({ x: t.sequence, y: t.fillPrice, qty: t.qtyFilled }));
+  // X-axis is the actual event time (not a sequence index) — each point's
+  // own real eventTimestamp from the persisted trade, never interpolated.
+  const buyPoints = filled.filter((t) => t.type === "BUY").map((t) => ({ x: new Date(t.eventTimestamp).getTime(), y: t.fillPrice, qty: t.qtyFilled }));
+  const sellPoints = filled.filter((t) => t.type === "SELL").map((t) => ({ x: new Date(t.eventTimestamp).getTime(), y: t.fillPrice, qty: t.qtyFilled }));
+  const times = filled.map((t) => new Date(t.eventTimestamp).getTime()).filter(Number.isFinite);
+  const timeDomain = times.length ? [Math.min(...times), Math.max(...times)] : ["auto", "auto"];
+  const formatTime = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
   if (!filled.length && !Number.isFinite(currentPrice)) {
     return <p className="text-sm text-gray-400">No simulated fills yet — grid levels will appear here once the session is active.</p>;
@@ -52,10 +57,20 @@ export default function GridLevelsChart({ config, trades, currentPrice, activeRe
       <ResponsiveContainer width="100%" height="100%">
         <ScatterChart margin={{ top: 8, right: 16, left: 0, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-          <XAxis type="number" dataKey="x" name="Fill #" tick={{ fontSize: 10 }} allowDecimals={false} />
+          <XAxis
+            type="number"
+            dataKey="x"
+            name="Time"
+            domain={timeDomain}
+            tickFormatter={formatTime}
+            tick={{ fontSize: 10 }}
+          />
           <YAxis type="number" dataKey="y" name="Price" tick={{ fontSize: 10 }} domain={[lowBound, highBound]} />
           <ZAxis type="number" dataKey="qty" range={[40, 160]} name="Qty" />
-          <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(value, name) => [value, name]} />
+          <Tooltip
+            cursor={{ strokeDasharray: "3 3" }}
+            formatter={(value, name) => (name === "Time" ? [formatTime(value), name] : [value, name])}
+          />
           <Legend wrapperStyle={{ fontSize: 11 }} />
 
           <ReferenceLine y={config.referencePrice} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "Initial Reference", fontSize: 10, position: "insideTopRight" }} />

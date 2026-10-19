@@ -371,6 +371,26 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
             </table>
           </div>
         )}
+        {session?.tradeCounts && (
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-xs text-gray-600">
+            <span>
+              Total Buy Events: <span className="font-semibold text-green-700">{formatQuantity(session.tradeCounts.buyCount)}</span>
+            </span>
+            <span>
+              Total Sell Events: <span className="font-semibold text-red-700">{formatQuantity(session.tradeCounts.sellCount)}</span>
+            </span>
+            {session.tradeCounts.skippedCount > 0 && (
+              <span>
+                Skipped: <span className="font-semibold text-amber-700">{formatQuantity(session.tradeCounts.skippedCount)}</span>
+              </span>
+            )}
+            {session.tradeCounts.partialCount > 0 && (
+              <span>
+                Partial fills: <span className="font-semibold text-amber-700">{formatQuantity(session.tradeCounts.partialCount)}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

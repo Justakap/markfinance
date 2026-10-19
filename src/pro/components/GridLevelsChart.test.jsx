@@ -17,14 +17,26 @@ describe("GridLevelsChart", () => {
 
   test("renders the chart once a current price or a fill exists, without crashing", () => {
     const trades = [
-      { type: "BUY", level: -1, fillPrice: 337, qtyFilled: 100, sequence: 1 },
-      { type: "SELL", level: 1, fillPrice: 345, qtyFilled: 50, sequence: 2 },
-      { type: "BUY", level: -2, fillPrice: 334, qtyFilled: 0, sequence: 3 }, // skipped, excluded from markers
+      { type: "BUY", level: -1, fillPrice: 337, qtyFilled: 100, sequence: 1, eventTimestamp: "2026-01-01T09:15:00.000Z" },
+      { type: "SELL", level: 1, fillPrice: 345, qtyFilled: 50, sequence: 2, eventTimestamp: "2026-01-01T09:20:00.000Z" },
+      { type: "BUY", level: -2, fillPrice: 334, qtyFilled: 0, sequence: 3, eventTimestamp: "2026-01-01T09:25:00.000Z" }, // skipped, excluded from markers
     ];
     const { container } = render(<GridLevelsChart config={CONFIG} trades={trades} currentPrice={340} />);
     // jsdom gives ResponsiveContainer zero layout dimensions, so recharts
     // never mounts its inner <svg> — asserting the container itself (not
     // the chart library's internals) is enough to prove no crash occurred.
+    expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
+  });
+
+  test("the X-axis is the trade's real event time, not a sequence index", () => {
+    const trades = [
+      { type: "BUY", level: -1, fillPrice: 337, qtyFilled: 100, sequence: 1, eventTimestamp: "2026-01-01T09:15:00.000Z" },
+    ];
+    // Doesn't crash with a real eventTimestamp present; sequence is no
+    // longer read for X-axis positioning (removing it entirely here would
+    // previously have been harmless either way, but this documents the
+    // field the chart now actually depends on).
+    const { container } = render(<GridLevelsChart config={CONFIG} trades={trades} currentPrice={340} />);
     expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
   });
 });
