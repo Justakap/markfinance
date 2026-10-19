@@ -22,10 +22,9 @@ describe("GridSimulatorCreateForm", () => {
     apiFetch.mockResolvedValue([]);
   });
 
-  test("discloses PAPER TRADING ONLY and the incomplete cost model", () => {
+  test("discloses the incomplete cost model, with no PAPER TRADING ONLY warning banner", () => {
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
-    expect(screen.getByText(/PAPER TRADING ONLY/)).toBeInTheDocument();
-    expect(screen.getByText(/never places a real broker order/)).toBeInTheDocument();
+    expect(screen.queryByText(/PAPER TRADING ONLY/)).not.toBeInTheDocument();
     expect(screen.getByText(/does not include STT, exchange transaction charges, GST, SEBI/)).toBeInTheDocument();
   });
 
@@ -136,5 +135,36 @@ describe("GridSimulatorCreateForm", () => {
     fireEvent.click(screen.getByText("Create Grid Session"));
 
     expect(await screen.findByText(/No sufficiently fresh market quote/)).toBeInTheDocument();
+  });
+
+  test("sellVariance defaults to null (mirrors buy variance) when 'Use a different Sell Variance' is left unchecked", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s3" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ gridInterval: 3, sellVariance: null }),
+    ));
+  });
+
+  test("checking 'Use a different Sell Variance' requires and submits a positive sellVariance", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s4" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Use a different Sell Variance"));
+
+    // No sellVariance entered yet -> rejected client-side.
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    expect(await screen.findByText(/Sell variance must be a positive number/)).toBeInTheDocument();
+    expect(professionalApi.createGridSession).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText("e.g. 5"), { target: { value: "5" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ gridInterval: 3, sellVariance: 5 }),
+    ));
   });
 });

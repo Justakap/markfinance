@@ -23,6 +23,8 @@ const DEFAULT_SLIPPAGE_PCT = 0.05;
 export default function GridSimulatorCreateForm({ onCreated }) {
   const [instrument, setInstrument] = useState(null);
   const [gridInterval, setGridInterval] = useState("");
+  const [useSeparateSellVariance, setUseSeparateSellVariance] = useState(false);
+  const [sellVariance, setSellVariance] = useState("");
   const [quantityPerLevel, setQuantityPerLevel] = useState(100);
   const [startingCapital, setStartingCapital] = useState(100000);
   const [maxPositionSize, setMaxPositionSize] = useState("");
@@ -48,6 +50,10 @@ export default function GridSimulatorCreateForm({ onCreated }) {
       setError("Grid interval must be a positive number");
       return;
     }
+    if (useSeparateSellVariance && !(Number.isFinite(Number(sellVariance)) && Number(sellVariance) > 0)) {
+      setError("Sell variance must be a positive number");
+      return;
+    }
     if (hasStartingHoldings && !(Number.isFinite(Number(startingAvgCost)) && Number(startingAvgCost) > 0)) {
       setError("Average purchase price is required when starting holdings are greater than zero");
       return;
@@ -59,6 +65,7 @@ export default function GridSimulatorCreateForm({ onCreated }) {
         symbol: instrument.symbol,
         instrumentKey: instrument.instrumentKey || instrument.instrument_key,
         gridInterval: Number(gridInterval),
+        sellVariance: useSeparateSellVariance ? Number(sellVariance) : null,
         quantityPerLevel: Number(quantityPerLevel),
         startingCapital: Number(startingCapital),
         maxPositionSize: maxPositionSize === "" ? null : Number(maxPositionSize),
@@ -80,10 +87,9 @@ export default function GridSimulatorCreateForm({ onCreated }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-gray-200 p-4">
-      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-        <strong>PAPER TRADING ONLY.</strong> This simulates a trailing-reference grid strategy against live/polled
-        prices — it never places a real broker order. Simulated fills use a two-knob commission/slippage model
-        (see below); it does not include STT, exchange transaction charges, GST, SEBI turnover fees, or stamp duty.
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+        Simulated fills use a two-knob commission/slippage model (see below); it does not include STT, exchange
+        transaction charges, GST, SEBI turnover fees, or stamp duty.
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -102,7 +108,7 @@ export default function GridSimulatorCreateForm({ onCreated }) {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Grid Interval (₹)</label>
+          <label className="mb-1 block text-xs font-medium text-gray-500">Grid Variance / Buy Variance (₹)</label>
           <input
             type="number"
             step="0.01"
@@ -110,6 +116,25 @@ export default function GridSimulatorCreateForm({ onCreated }) {
             onChange={(e) => setGridInterval(e.target.value)}
             className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
             placeholder="e.g. 3"
+          />
+        </div>
+        <div>
+          <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+            <input
+              type="checkbox"
+              checked={useSeparateSellVariance}
+              onChange={(e) => setUseSeparateSellVariance(e.target.checked)}
+            />
+            Use a different Sell Variance
+          </label>
+          <input
+            type="number"
+            step="0.01"
+            value={sellVariance}
+            onChange={(e) => setSellVariance(e.target.value)}
+            disabled={!useSeparateSellVariance}
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+            placeholder={useSeparateSellVariance ? "e.g. 5" : "Mirrors Buy Variance"}
           />
         </div>
         <div>

@@ -204,6 +204,7 @@ export function createGridSession({
   symbol,
   instrumentKey,
   gridInterval,
+  sellVariance,
   quantityPerLevel,
   startingCapital,
   maxPositionSize,
@@ -219,6 +220,7 @@ export function createGridSession({
       symbol,
       instrumentKey,
       gridInterval,
+      sellVariance,
       quantityPerLevel,
       startingCapital,
       maxPositionSize,
@@ -258,6 +260,21 @@ export function stopGridSession(sessionId) {
 export function listGridTrades(sessionId, { page = 1, limit = 50, skippedOnly = false } = {}) {
   const skippedParam = skippedOnly ? "&skippedOnly=true" : "";
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/trades?page=${page}&limit=${limit}${skippedParam}`);
+}
+
+// ADR-034: live-editable config — only allowed while the session is PAUSED
+// (enforced server-side). `useSeparateSellVariance: false` clears a
+// previously-set sellVariance so it mirrors gridInterval again.
+export function updateGridSessionConfig(sessionId, { quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, addCash } = {}) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/config`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantityPerLevel, gridInterval, useSeparateSellVariance, sellVariance, addCash }),
+  });
+}
+
+export function deleteGridSession(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}`, { method: "DELETE" });
 }
 
 /**

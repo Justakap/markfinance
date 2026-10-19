@@ -9,7 +9,7 @@ export default function GridSimulatorDetailPage() {
   const navigate = useNavigate();
 
   return (
-    <MainLayout title="Grid Session" subtitle="Paper trading only — no real broker order is ever placed">
+    <MainLayout hideHeader>
       <div className="px-6 py-4">
         <GridSimulatorDetail sessionId={sessionId} onBack={() => navigate("/workspace/grid")} />
       </div>

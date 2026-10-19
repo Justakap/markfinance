@@ -63,12 +63,12 @@ describe("GridSimulatorDetail", () => {
     unmount();
   });
 
-  test("renders PAPER TRADING disclosure, portfolio stats, and feed health", async () => {
+  test("renders portfolio stats and feed health, with no PAPER TRADING disclosure banner", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
 
     await waitFor(() => expect(screen.getByText("GICRE")).toBeInTheDocument());
-    expect(screen.getByText(/PAPER TRADING ONLY/)).toBeInTheDocument();
+    expect(screen.queryByText(/PAPER TRADING ONLY/)).not.toBeInTheDocument();
     expect(screen.getByText("Live (WebSocket)")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
     expect(screen.getByText("₹336.00")).toBeInTheDocument(); // avgCost
@@ -282,6 +282,49 @@ describe("GridSimulatorDetail", () => {
     await waitFor(() => screen.getByText("GICRE"));
     expect(screen.getByText(/Initial reference ₹340\.00/)).toBeInTheDocument();
     expect(screen.getByText(/captured/)).toBeInTheDocument();
+    unmount();
+  });
+
+  test("the config editor (ADR-034) is not shown while ACTIVE", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "ACTIVE" }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    expect(screen.queryByText("Edit Configuration")).not.toBeInTheDocument();
+    unmount();
+  });
+
+  test("the config editor appears while PAUSED, pre-filled from the current config, and submits a patch", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "PAUSED", config: { referencePrice: 340, referenceCapturedAt: "2026-01-01T09:00:00.000Z", gridInterval: 3, sellVariance: 6, quantityPerLevel: 100 } }));
+    professionalApi.updateGridSessionConfig.mockResolvedValue({ session: {} });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+
+    fireEvent.click(screen.getByText("Edit"));
+    expect(screen.getByDisplayValue("100")).toBeInTheDocument(); // quantityPerLevel pre-filled
+    expect(screen.getByDisplayValue("3")).toBeInTheDocument(); // gridInterval pre-filled
+    expect(screen.getByDisplayValue("6")).toBeInTheDocument(); // sellVariance pre-filled
+    expect(screen.getByLabelText("Use a different Sell Variance")).toBeChecked(); // sellVariance was already set -> checkbox pre-checked
+
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => expect(professionalApi.updateGridSessionConfig).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({ quantityPerLevel: 100, gridInterval: 3, useSeparateSellVariance: true, sellVariance: 6 }),
+    ));
+    unmount();
+  });
+
+  test("the config editor rejects editing when a session goes not-PAUSED mid-flight (backend 409)", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "PAUSED" }));
+    professionalApi.updateGridSessionConfig.mockRejectedValue({ data: { message: "Pause the session before editing its configuration" } });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+
+    fireEvent.click(screen.getByText("Edit"));
+    fireEvent.click(screen.getByText("Save"));
+
+    const { showError } = require("../../utils/toast");
+    await waitFor(() => expect(showError).toHaveBeenCalledWith("Pause the session before editing its configuration"));
     unmount();
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { listGridSessions } from "../api/professionalApi";
-import { showError } from "../../utils/toast";
+import { listGridSessions, deleteGridSession } from "../api/professionalApi";
+import { showError, showSuccess, confirmAction } from "../../utils/toast";
 import { formatINR, formatQuantity } from "../../utils/indianFormat";
 
 const PAGE_SIZE = 20;
@@ -25,6 +25,8 @@ export default function GridSimulatorList({ onOpenSession, onCreateClick, refres
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +53,29 @@ export default function GridSimulatorList({ onOpenSession, onCreateClick, refres
     return () => {
       cancelled = true;
     };
-  }, [page, statusFilter, refreshKey]);
+  }, [page, statusFilter, refreshKey, reloadKey]);
+
+  async function handleDelete(item, e) {
+    e.stopPropagation(); // never also open the session
+    const confirmed = await confirmAction({
+      title: "Delete this grid simulator session?",
+      message: `This permanently deletes ${item.symbol}'s session and its entire trade ledger. This cannot be undone.`,
+      confirmText: "Delete session",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    setDeletingId(item.sessionId);
+    try {
+      await deleteGridSession(item.sessionId);
+      showSuccess("Session deleted");
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      showError(err?.data?.message || "Failed to delete session");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -103,6 +127,7 @@ export default function GridSimulatorList({ onOpenSession, onCreateClick, refres
                 <th className="p-2 text-left font-medium text-gray-500">Qty/Level</th>
                 <th className="p-2 text-left font-medium text-gray-500">Status</th>
                 <th className="p-2 text-left font-medium text-gray-500">Created</th>
+                <th className="p-2 text-left font-medium text-gray-500"></th>
               </tr>
             </thead>
             <tbody>
@@ -122,6 +147,16 @@ export default function GridSimulatorList({ onOpenSession, onCreateClick, refres
                     </span>
                   </td>
                   <td className="p-2 text-gray-500">{item.createdAt ? new Date(item.createdAt).toLocaleString() : "--"}</td>
+                  <td className="p-2">
+                    <button
+                      type="button"
+                      disabled={deletingId === item.sessionId}
+                      onClick={(e) => handleDelete(item, e)}
+                      className="rounded-lg border border-red-300 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      {deletingId === item.sessionId ? "Deleting…" : "Delete"}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

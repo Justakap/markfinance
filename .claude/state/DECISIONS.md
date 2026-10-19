@@ -1648,3 +1648,87 @@ backend suite: 466 checks, exit 0. Frontend unaffected (same `avgCost`/
 `realizedPnL` field names and shapes exposed via REST/Socket.IO — only
 the internal computation changed). No production/shared-database session
 was touched.
+
+## ADR-034 — Asymmetric buy/sell grid variance; live-editable config while PAUSED; session delete
+
+Status: ACCEPTED (explicit project-owner request)
+
+Decision:
+
+`config.sellVariance` (nullable, default `null`) is a new optional field
+on the grid config. `gridInterval` remains the spacing used for downward
+(BUY) crossings; when `sellVariance` is set, it — not `gridInterval` — is
+the spacing used for upward (SELL) crossings. `null`/absent means the
+sell side simply mirrors `gridInterval`, i.e. the original symmetric
+behavior, byte-for-byte. Since one price update moves in only one
+direction, `processPriceUpdate` only ever needs one of the two variances
+per call (`direction === "down" ? gridInterval : (sellVariance ??
+gridInterval)`) — no interleaving logic was needed, and the rest of the
+crossing/rebase/FIFO machinery (ADR-031/ADR-032) is completely untouched.
+
+A new `PATCH /api/v2/grid-simulator/sessions/:sessionId/config` endpoint
+(`updateSessionConfig` in `gridSimulatorService.js`) lets the owner edit
+`quantityPerLevel`, `gridInterval` (buy variance), `sellVariance`
+(set/cleared via a `useSeparateSellVariance` flag), and add to `state.cash`
+via a top-up (`addCash`, applied with `$inc`, never an overwrite) —
+restricted to PAUSED sessions only, enforced by a status-scoped
+`findOneAndUpdate` in the service layer (not just a route-level check), so
+a concurrent resume can never race past it. The frontend's edit panel
+(`GridSimulatorDetail.jsx`) is likewise only rendered while PAUSED.
+
+A new `DELETE /api/v2/grid-simulator/sessions/:sessionId` endpoint
+(`deleteSession`) permanently removes a session and its entire trade
+ledger, regardless of status. The route first calls
+`unregisterRealtimeSession()` so an ACTIVE/PAUSED session's instrument pin
+is released and no further tick ever targets the now-deleted document,
+before the DB rows are removed.
+
+The three pre-existing "PAPER TRADING ONLY" disclosure banners on the
+live session page and the create form, and the "Grid Session / Paper
+trading only…" page header, were removed per explicit instruction — the
+underlying safety property (never places a real broker order) is
+unchanged, only the UI text was removed. The sessions-list page's own
+banner and the code-level doc comments stating this constraint (e.g. at
+the top of `gridSimulatorEngine.js`) were deliberately left alone — out
+of the requested scope.
+
+Reason:
+
+Explicit project-owner request: independently tunable buy/sell spacing,
+the ability to top up cash/adjust qty/variance without stopping (and
+losing the resumability of) a running session, a way to permanently clean
+up old sessions from the list, and a less cluttered UI with the repeated
+paper-trading disclaimers removed from the two most-visited pages.
+Pause/Resume semantics were explicitly confirmed unchanged — this round
+added a config editor gated on the existing PAUSED state, nothing about
+the transition logic itself.
+
+Consequence:
+
+A session created before this change has `sellVariance: undefined` in
+the DB — `normalizeConfig` treats that identically to an explicit `null`
+(mirrors `gridInterval`), so every pre-existing session's crossing
+behavior is completely unaffected until its owner explicitly opts into a
+separate sell variance. `quantityPerLevel`/`gridInterval`/`sellVariance`
+edits apply to FUTURE crossings only — past trades, holdings, and lots
+are never touched or retroactively recalculated.
+
+3 new engine tests (sellVariance validation, the exact asymmetric
+BUY-steps-by-gridInterval/SELL-steps-by-sellVariance scenario verified
+against a hand calculation, and a mirror-equivalence test proving
+`sellVariance: null` is byte-for-byte identical to the old symmetric
+behavior across a full oscillation) + 7 new service tests
+(`updateSessionConfig`'s PAUSED-only gate, successful multi-field edit,
+clearing a previously-set `sellVariance`, invalid-config rejection,
+cross-user 404; `deleteSession`'s full removal and cross-user 404) + 6 new
+route tests (PATCH's PAUSED gate/success/validation/ownership; DELETE's
+any-status removal + realtime-unregister call + cross-user 404). Full
+backend suite: 48 engine + 23 service + 23 route (and every other
+untouched suite) passing, exit 0. Frontend: new create-form tests (sell
+variance checkbox default-null and checked-with-value paths), new detail
+tests (editor hidden while ACTIVE, shown/pre-filled/submits while PAUSED,
+surfaces a 409 if the status changes mid-edit), new list tests (Delete
+available for any status, confirmation-decline no-ops) — 183/183 real
+tests passing (the pre-existing, unrelated `App.test.js` `react-router/
+dom` resolution failure is unchanged). Both production builds clean. No
+production/shared-database session was touched or migrated.

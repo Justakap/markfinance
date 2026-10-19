@@ -6,6 +6,7 @@ import {
   pauseGridSession,
   resumeGridSession,
   stopGridSession,
+  updateGridSessionConfig,
 } from "../api/professionalApi";
 import { showError, showSuccess, confirmAction } from "../../utils/toast";
 import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, forceReconnectMarketSocket } from "../../utils/socket";
@@ -89,6 +90,13 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [actionPending, setActionPending] = useState(false);
   const [connectionState, setConnectionState] = useState("disconnected");
   const [refreshing, setRefreshing] = useState(false);
+  const [showConfigEditor, setShowConfigEditor] = useState(false);
+  const [editQuantityPerLevel, setEditQuantityPerLevel] = useState("");
+  const [editGridInterval, setEditGridInterval] = useState("");
+  const [editUseSeparateSellVariance, setEditUseSeparateSellVariance] = useState(false);
+  const [editSellVariance, setEditSellVariance] = useState("");
+  const [editAddCash, setEditAddCash] = useState("");
+  const [configSubmitting, setConfigSubmitting] = useState(false);
   const mountedRef = useRef(true);
   const skippedOnlyRef = useRef(skippedOnly);
   skippedOnlyRef.current = skippedOnly;
@@ -237,6 +245,56 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     }
   }
 
+  // Live-editable config (ADR-034) — only reachable while PAUSED, both here
+  // and server-side, so a crossing can never be processed concurrently
+  // with a half-applied edit.
+  function openConfigEditor() {
+    setEditQuantityPerLevel(String(session.config.quantityPerLevel));
+    setEditGridInterval(String(session.config.gridInterval));
+    setEditUseSeparateSellVariance(session.config.sellVariance != null);
+    setEditSellVariance(session.config.sellVariance != null ? String(session.config.sellVariance) : "");
+    setEditAddCash("");
+    setShowConfigEditor(true);
+  }
+
+  async function handleConfigSubmit(e) {
+    e.preventDefault();
+    if (!Number.isInteger(Number(editQuantityPerLevel)) || Number(editQuantityPerLevel) < 1) {
+      showError("Quantity per level must be a positive integer");
+      return;
+    }
+    if (!Number.isFinite(Number(editGridInterval)) || Number(editGridInterval) <= 0) {
+      showError("Grid/Buy variance must be a positive number");
+      return;
+    }
+    if (editUseSeparateSellVariance && !(Number.isFinite(Number(editSellVariance)) && Number(editSellVariance) > 0)) {
+      showError("Sell variance must be a positive number");
+      return;
+    }
+    if (editAddCash !== "" && !(Number.isFinite(Number(editAddCash)) && Number(editAddCash) > 0)) {
+      showError("Cash to add must be a positive number");
+      return;
+    }
+
+    setConfigSubmitting(true);
+    try {
+      await updateGridSessionConfig(sessionId, {
+        quantityPerLevel: Number(editQuantityPerLevel),
+        gridInterval: Number(editGridInterval),
+        useSeparateSellVariance: editUseSeparateSellVariance,
+        sellVariance: editUseSeparateSellVariance ? Number(editSellVariance) : undefined,
+        addCash: editAddCash !== "" ? Number(editAddCash) : undefined,
+      });
+      showSuccess("Session configuration updated");
+      setShowConfigEditor(false);
+      await load();
+    } catch (err) {
+      showError(err?.data?.message || "Failed to update session configuration");
+    } finally {
+      if (mountedRef.current) setConfigSubmitting(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-gray-400">Loading grid simulator session…</p>;
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!session) return <p className="text-sm text-gray-400">Session not found.</p>;
@@ -248,10 +306,6 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
       <button type="button" onClick={onBack} className="text-sm text-blue-600 hover:underline">
         &larr; Back to sessions
       </button>
-
-      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-        <strong>PAPER TRADING ONLY.</strong> No real broker order is ever placed by this session.
-      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-4">
         <div>
@@ -307,6 +361,78 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           )}
         </div>
       </div>
+
+      {session.status === "PAUSED" && (
+        <div className="rounded-xl border border-gray-200 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Edit Configuration</h3>
+            {!showConfigEditor && (
+              <button type="button" onClick={openConfigEditor} className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                Edit
+              </button>
+            )}
+          </div>
+          {showConfigEditor && (
+            <form onSubmit={handleConfigSubmit} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Add Cash (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editAddCash}
+                    onChange={(e) => setEditAddCash(e.target.value)}
+                    placeholder="0"
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Quantity per Level</label>
+                  <input
+                    type="number"
+                    value={editQuantityPerLevel}
+                    onChange={(e) => setEditQuantityPerLevel(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-500">Grid Variance / Buy Variance (₹)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editGridInterval}
+                    onChange={(e) => setEditGridInterval(e.target.value)}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                    <input type="checkbox" checked={editUseSeparateSellVariance} onChange={(e) => setEditUseSeparateSellVariance(e.target.checked)} />
+                    Use a different Sell Variance
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editSellVariance}
+                    onChange={(e) => setEditSellVariance(e.target.value)}
+                    disabled={!editUseSeparateSellVariance}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
+                    placeholder={editUseSeparateSellVariance ? "e.g. 5" : "Mirrors Buy Variance"}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" disabled={configSubmitting} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50">
+                  {configSubmitting ? "Saving…" : "Save"}
+                </button>
+                <button type="button" onClick={() => setShowConfigEditor(false)} className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700">
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Cash" value={formatINR(portfolio?.cash)} />

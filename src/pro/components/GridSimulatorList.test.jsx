@@ -2,6 +2,7 @@ import "@testing-library/jest-dom";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import GridSimulatorList from "./GridSimulatorList";
 import * as professionalApi from "../api/professionalApi";
+import { confirmAction } from "../../utils/toast";
 
 jest.mock("../api/professionalApi");
 jest.mock("../../utils/toast", () => ({
@@ -68,5 +69,31 @@ describe("GridSimulatorList", () => {
     render(<GridSimulatorList onOpenSession={jest.fn()} onCreateClick={onCreateClick} />);
     fireEvent.click(screen.getByText("+ New Grid Session"));
     expect(onCreateClick).toHaveBeenCalled();
+  });
+
+  test("Delete is available for any session status and does not also open the session", async () => {
+    professionalApi.listGridSessions.mockResolvedValue({ items: [session({ status: "ACTIVE" })], total: 1 });
+    confirmAction.mockResolvedValue(true);
+    professionalApi.deleteGridSession.mockResolvedValue({ success: true });
+    const onOpenSession = jest.fn();
+    render(<GridSimulatorList onOpenSession={onOpenSession} onCreateClick={jest.fn()} />);
+
+    await waitFor(() => screen.getByText("GICRE"));
+    fireEvent.click(screen.getByText("Delete"));
+
+    await waitFor(() => expect(professionalApi.deleteGridSession).toHaveBeenCalledWith("s1"));
+    expect(onOpenSession).not.toHaveBeenCalled();
+  });
+
+  test("Delete does nothing if the confirmation is declined", async () => {
+    professionalApi.listGridSessions.mockResolvedValue({ items: [session()], total: 1 });
+    confirmAction.mockResolvedValue(false);
+    render(<GridSimulatorList onOpenSession={jest.fn()} onCreateClick={jest.fn()} />);
+
+    await waitFor(() => screen.getByText("GICRE"));
+    fireEvent.click(screen.getByText("Delete"));
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(professionalApi.deleteGridSession).not.toHaveBeenCalled();
   });
 });
