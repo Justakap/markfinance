@@ -342,19 +342,20 @@ describe("GridSimulatorDetail", () => {
 
   test("Total Charges card (ADR-035) shows the running total and a hover breakdown, with an approximate-segment disclosure when flagged", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail({
-      charges: { brokerage: 20, stt: 5.5, exchangeTxnCharges: 1.2, sebiFee: 0.1, stampDuty: 0.6, total: 27.4, segmentClass: "FUTURES", approximate: true },
+      charges: { brokerage: 20, stt: 5.5, exchangeTxnCharges: 1.2, sebiFee: 0.1, stampDuty: 0.6, gst: 3.8, total: 31.2, segmentClass: "FUTURES", approximate: true },
     }));
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
     await waitFor(() => screen.getByText("GICRE"));
 
     expect(screen.getByText("Total Charges")).toBeInTheDocument();
-    expect(screen.getAllByText("₹27.40").length).toBeGreaterThan(0); // appears in both the card and the hover breakdown's total row
+    expect(screen.getAllByText("₹31.20").length).toBeGreaterThan(0); // appears in both the card and the hover breakdown's total row
     expect(screen.getByText(/Approximate \(segment not exactly modeled\)/)).toBeInTheDocument();
     expect(screen.getByText("Brokerage")).toBeInTheDocument();
     expect(screen.getByText("STT")).toBeInTheDocument();
     expect(screen.getByText("Exchange Txn Charges")).toBeInTheDocument();
     expect(screen.getByText("SEBI Charges")).toBeInTheDocument();
     expect(screen.getByText("Stamp Duty")).toBeInTheDocument();
+    expect(screen.getByText("GST")).toBeInTheDocument();
     unmount();
   });
 });

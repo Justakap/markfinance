@@ -1832,3 +1832,82 @@ breakdown/approximate-disclosure) — 186/186 real tests passing (the
 pre-existing, unrelated `App.test.js` failure is unchanged). Both
 production builds clean. No production/shared-database session was
 touched or migrated.
+
+## ADR-036 — Corrected charges rate tables: proper brokerage formula, GST, and a dedicated MCX commodity segment
+
+Status: ACCEPTED (explicit project-owner request, superseding ADR-035's
+rate tables)
+
+Decision:
+
+Replaced ADR-035's simplified rate tables in `gridChargesCalculator.js`
+with the project owner's full specification:
+
+- **Brokerage** is now `min(0.03% of turnover, ₹20)` for equity intraday,
+  equity futures, and commodity futures (`computeBrokerage()`'s new
+  `"minOfPctOrFlat"` config, replacing the flat-₹20 simplification ADR-035
+  used for futures) — flat ₹20/order is kept only for equity options and
+  commodity options (unchanged from ADR-035, and correct per the
+  project owner's table). Equity delivery stays ₹0.
+- **GST** — 18% of (brokerage + exchange transaction charges + SEBI fee)
+  — is a wholly new component, added to every segment's per-trade
+  breakdown and summed into `summarizeCharges()`'s totals. It deliberately
+  excludes STT/CTT and stamp duty, matching the specification exactly.
+- **Commodity (MCX) futures/options** are now two dedicated segments,
+  `COMMODITY_FUTURES`/`COMMODITY_OPTIONS`, with their own CTT (0.01%/
+  0.05% sell), MCX exchange fee (0.0021%/0.0418%), and stamp duty (0.002%/
+  0.003% buy) rates — `classifySegmentClass()` checks the MCX segment
+  FIRST and splits by option-type detection, so an MCX instrument never
+  again falls back to the equity-futures rate structure (ADR-035's
+  fallback, which incorrectly applied STT to a commodity instrument that
+  has none — CTT is a different, non-STT tax).
+- `EQUITY_INTRADAY` rates are added for completeness/correctness (0.025%
+  STT sell-only, the min(0.03%,₹20) brokerage, 0.003% stamp duty) but
+  `classifySegmentClass()` still never auto-selects it — see the file's
+  doc comment for why (the grid strategy holds positions indefinitely,
+  which is structurally closer to delivery than same-day-squared-off
+  intraday; nothing in this codebase currently asks the user to declare
+  trading-style intent, so auto-classifying as intraday would be a guess,
+  not a derivation).
+- `KNOWN_SEGMENTS` now covers all 6 segments above, so `approximate: true`
+  only fires for a truly unrecognized segmentClass string (defensive —
+  `classifySegmentClass()` itself always returns one of the 6).
+
+Reason:
+
+The project owner supplied a complete, explicit charges specification
+(brokerage/STT/CTT/exchange-fee/stamp-duty/SEBI/GST rates for equity
+delivery, equity intraday, equity futures, equity options, and MCX
+commodity futures/options, plus the exact calculation formulas for each),
+correcting ADR-035's deliberate simplifications (flat futures brokerage,
+no GST, MCX folded into the futures fallback) with real-world accuracy.
+
+Consequence:
+
+A session created before this change has `segmentClass: "EQUITY_DELIVERY"`
+or one of ADR-035's original 3 values — all three remain valid, unaffected
+buckets in the new 6-segment table (their rates for those 3 segments are
+unchanged except for the futures brokerage formula and the new GST
+addition, both of which apply automatically on the next load with zero
+migration needed, since `getChargesSummary()` recomputes from the trade
+ledger on every request rather than storing a cached total). An MCX
+session created before this change had `segmentClass: "FUTURES"` (ADR-035's
+fallback) — it will keep using equity-futures rates until re-created,
+since `segmentClass` is immutable per session (same precedent as
+`referencePrice`); only a NEW MCX session gets the correct
+`COMMODITY_FUTURES`/`COMMODITY_OPTIONS` classification. This was judged an
+acceptable, disclosed tradeoff (consistent with every other immutable-at-
+creation config field in this feature) rather than retroactively
+reclassifying existing sessions.
+
+4 new/updated engine-adjacent tests in `tests/gridChargesCalculator.test.js`
+(brokerage min-formula for futures/commodity-futures vs flat for options/
+commodity-options, MCX splitting into the 2 new segments, GST computed
+exactly as 18% of brokerage+exchange+SEBI and never STT/stamp duty, all 6
+segments reporting `approximate: false`) — 12/12 passing. Full backend
+suite (every file) still passing, exit 0. Frontend: `ChargesStat`'s hover
+breakdown gained a GST row; existing test's fixture updated to include a
+`gst` field and assert the row renders — 186/186 real tests passing (the
+pre-existing, unrelated `App.test.js` failure is unchanged). Both
+production builds clean. No production/shared-database session was
+touched or migrated.

@@ -544,6 +544,7 @@ function ChargesStat({ charges }) {
         ["Exchange Txn Charges", charges.exchangeTxnCharges],
         ["SEBI Charges", charges.sebiFee],
         ["Stamp Duty", charges.stampDuty],
+        ["GST", charges.gst],
       ]
     : [];
 
