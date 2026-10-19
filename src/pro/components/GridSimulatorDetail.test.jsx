@@ -14,10 +14,11 @@ jest.mock("../../utils/socket", () => ({
   joinGridSession: jest.fn(),
   onGridSimulatorUpdate: jest.fn(),
   onSocketConnectionChange: jest.fn(),
+  forceReconnectMarketSocket: jest.fn(),
 }));
 
 const { confirmAction } = require("../../utils/toast");
-const { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } = require("../../utils/socket");
+const { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, forceReconnectMarketSocket } = require("../../utils/socket");
 
 function sessionDetail(overrides = {}) {
   return {
@@ -127,6 +128,19 @@ describe("GridSimulatorDetail", () => {
     await waitFor(() => screen.getByText(/Back to sessions/));
     fireEvent.click(screen.getByText(/Back to sessions/));
     expect(onBack).toHaveBeenCalled();
+    unmount();
+  });
+
+  test("clicking Refresh forces a socket reconnect and re-fetches the session over REST", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText("GICRE"));
+    const callsBefore = professionalApi.getGridSession.mock.calls.length;
+
+    fireEvent.click(screen.getByText(/Refresh/));
+
+    expect(forceReconnectMarketSocket).toHaveBeenCalled();
+    await waitFor(() => expect(professionalApi.getGridSession.mock.calls.length).toBeGreaterThan(callsBefore));
     unmount();
   });
 

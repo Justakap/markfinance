@@ -8,7 +8,7 @@ import {
   stopGridSession,
 } from "../api/professionalApi";
 import { showError, showSuccess, confirmAction } from "../../utils/toast";
-import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange } from "../../utils/socket";
+import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, forceReconnectMarketSocket } from "../../utils/socket";
 import { formatINR, formatQuantity } from "../../utils/indianFormat";
 import GridLevelsChart from "./GridLevelsChart";
 
@@ -88,6 +88,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [error, setError] = useState("");
   const [actionPending, setActionPending] = useState(false);
   const [connectionState, setConnectionState] = useState("disconnected");
+  const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
   const skippedOnlyRef = useRef(skippedOnly);
   skippedOnlyRef.current = skippedOnly;
@@ -219,6 +220,23 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     if (confirmed) handleTransition(stopGridSession, "stopped");
   }
 
+  // Manual escape hatch for a stale/stuck feed — cycles the Socket.IO
+  // transport (it already auto-reconnects on its own, this just skips the
+  // backoff wait) and immediately re-fetches the session over REST so the
+  // user isn't stuck waiting for the next tick/30s reconciliation poll.
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      forceReconnectMarketSocket();
+      await load();
+      showSuccess("Reconnected and refreshed");
+    } catch (err) {
+      showError(err?.data?.message || "Failed to refresh");
+    } finally {
+      if (mountedRef.current) setRefreshing(false);
+    }
+  }
+
   if (loading) return <p className="text-sm text-gray-400">Loading grid simulator session…</p>;
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!session) return <p className="text-sm text-gray-400">Session not found.</p>;
@@ -242,6 +260,9 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
             Initial reference {formatINR(config.referencePrice)} (immutable, captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
             Grid {formatINR(config.gridInterval)} · Qty/level {formatQuantity(config.quantityPerLevel)}
           </p>
+          <p className="text-xs text-gray-500">
+            Active reference <span className="font-medium text-gray-700">{formatINR(state?.activeReference ?? config.referencePrice)}</span> — the anchor the next BUY/SELL levels are measured from; it trails the price after every crossing
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CONNECTION_BADGE[connectionState] || CONNECTION_BADGE.disconnected}`}>
@@ -253,6 +274,15 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           <span className="text-xs text-gray-400">
             {lastFeedCheckAt ? `updated ${new Date(lastFeedCheckAt).toLocaleTimeString()}` : "no update yet"}
           </span>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Reconnect the live feed and refresh this session"
+            className="rounded-full border border-gray-300 px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {refreshing ? "Refreshing…" : "↻ Refresh"}
+          </button>
         </div>
         <div className="flex gap-2">
           {session.status === "CREATED" && (
@@ -282,16 +312,20 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
         <Stat label="Cash" value={formatINR(portfolio?.cash)} />
         <Stat label="Holdings" value={formatQuantity(portfolio?.holdings ?? 0)} />
         <Stat label="Avg Cost" value={formatINR(portfolio?.avgCost)} />
-        <Stat label="Equity" value={formatINR(portfolio?.equity)} />
+        <Stat
+          label="Stock Value"
+          value={formatINR(portfolio?.marketValue)}
+          sub={portfolio?.unrealizedPnL != null ? `${portfolio.unrealizedPnL >= 0 ? "+" : ""}${formatINR(portfolio.unrealizedPnL)} vs. purchase price` : undefined}
+          subTone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"}
+        />
         <Stat label="Realized P&L" value={formatINR(portfolio?.realizedPnL)} tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"} />
-        <Stat label="Unrealized P&L" value={formatINR(portfolio?.unrealizedPnL)} tone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"} />
         <Stat label="Last Price" value={formatINR(lastFeedPrice ?? state?.lastPrice)} />
         <Stat label="Trade Events" value={formatQuantity(tradesTotal)} />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">Grid Levels &amp; Simulated Fills</h3>
-        <GridLevelsChart config={config} trades={trades} currentPrice={lastFeedPrice ?? state?.lastPrice} />
+        <GridLevelsChart config={config} trades={trades} currentPrice={lastFeedPrice ?? state?.lastPrice} activeReference={state?.activeReference} />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">
@@ -342,12 +376,14 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   );
 }
 
-function Stat({ label, value, tone }) {
+function Stat({ label, value, tone, sub, subTone }) {
   const toneClass = tone === "pos" ? "text-green-700" : tone === "neg" ? "text-red-700" : "text-gray-900";
+  const subToneClass = subTone === "pos" ? "text-green-700" : subTone === "neg" ? "text-red-700" : "text-gray-500";
   return (
     <div className="rounded-xl border border-gray-200 p-3">
       <p className="text-xs text-gray-500">{label}</p>
       <p className={`text-lg font-semibold ${toneClass}`}>{value}</p>
+      {sub != null && <p className={`text-xs font-medium ${subToneClass}`}>{sub}</p>}
     </div>
   );
 }

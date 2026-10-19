@@ -44,6 +44,32 @@ describe("GridSimulatorCreateForm", () => {
     expect(professionalApi.createGridSession).not.toHaveBeenCalled();
   });
 
+  test("Starting Virtual Capital shows Indian comma grouping as the default value and while typing", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    const capitalInput = screen.getByDisplayValue("1,00,000"); // default 100000, Indian-grouped
+
+    fireEvent.change(capitalInput, { target: { value: "1500000" } });
+    expect(capitalInput.value).toBe("15,00,000");
+
+    fireEvent.change(capitalInput, { target: { value: "15,00,000" + "0" } }); // typing another digit after the formatted value
+    expect(capitalInput.value).toBe("1,50,00,000");
+  });
+
+  test("submits the numeric startingCapital value, not the comma-formatted display string", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s1" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+
+    const capitalInput = screen.getByDisplayValue("1,00,000");
+    fireEvent.change(capitalInput, { target: { value: "250000" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ startingCapital: 250000 }),
+    ));
+  });
+
   test("rejects a non-positive grid interval", async () => {
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
     await selectInstrument();

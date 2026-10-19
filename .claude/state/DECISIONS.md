@@ -1487,3 +1487,164 @@ ADR-028/029, and low-impact):
 Full backend suite: exit 0. Full frontend suite: 164/164 real tests
 passing (pre-existing BLOCKER-004 `App.test.js` failure unchanged).
 Production build clean. No live browser verification was performed.
+
+## ADR-031 — Trailing/rebasing active reference replaces the fixed-grid armed/disarmed model
+
+Status: ACCEPTED (explicit, deliberate strategy change requested by the
+project owner — supersedes ADR-021's fixed-grid design for the active
+crossing/eligibility logic; ADR-021's accounting/cost-basis rules are
+unchanged)
+
+Decision:
+
+`config.referencePrice` ("Initial Reference") remains an immutable,
+once-captured anchor kept forever for audit/display. But it no longer
+defines which levels are currently tradeable. A new `state.activeReference`
+("Active Reference") does that job: it starts equal to `referencePrice`
+and REBASES to the last grid level reached after EVERY crossing — whether
+that crossing's trade filled, partially filled, or was fully skipped for
+insufficient cash/holdings. Example (the reported scenario): reference
+320, interval 3, price moves 320→329 (crossing 323/326/329, all skipped —
+no holdings) → `activeReference` becomes 329. A later pullback to 326 is
+now a BUY (326 = 329 − interval), not a dead zone below the original
+323/326/329 sell levels.
+
+Because the reference always trails price, there is no more "armed/
+disarmed" state — every crossing is evaluated fresh against the current
+`activeReference`, and direction alone decides the action: a downward
+crossing is always a BUY attempt, an upward crossing is always a SELL
+attempt. `state.levelArmed` is no longer read or written by the engine
+(removed from `createInitialGridState`'s output; the Mongoose schema
+field is kept, marked deprecated, purely so an already-persisted
+pre-ADR-031 session document still loads without a schema error).
+
+A multi-level gap still fills every crossed level at the SAME actual
+observed event price (never the theoretical level), exactly as before —
+the active reference rebases to the LAST (farthest) level reached in that
+one event, not to the raw observed price.
+
+`findCrossedLevels()`'s signature changed from `(config, prevCents,
+newCents)` (implicitly anchored to `config.referencePrice`) to
+`(gridInterval, referenceCents, prevCents, newCents)` — an explicit
+anchor, since the anchor is no longer always the immutable reference.
+`levelPrice(config, n)` (anchored to the immutable reference) is kept
+as-is for display/audit purposes (e.g. the chart's static lattice lines);
+a new `levelPriceFromReference(reference, gridInterval, n)` is used
+internally for crossing math against the current active reference.
+
+Reason:
+
+Explicit, repeated instruction from the project owner, given with a
+concrete worked example (price touches 320→329 without a fill, then a
+pullback to 326 should be buyable) after this round's investigation
+confirmed the fixed-grid model (ADR-021) was working exactly as
+originally specified — this is a genuine strategy change, not a bug fix.
+Two rounds of clarifying questions confirmed: (1) rebasing applies
+symmetrically on both the BUY and SELL sides, after a filled, partial, OR
+skipped trade; (2) implement directly rather than write a design doc
+first.
+
+Consequence:
+
+Grid Backtest (`gridBacktestEngine.js`/`gridBacktestService.js`) requires
+**zero code changes** and automatically inherits this behavior — it
+reuses `createInitialGridState`/`processPriceUpdate` directly, exactly
+the "no second, subtly different implementation" principle this whole
+feature has followed since ADR-027. Every prior oscillation-based
+regression test (320→317→314→317→320, 320→323→326→323, the backtest
+engine's finer-grained-replay and conservative-fallback equivalents) was
+rewritten, not just re-asserted — under ADR-031 these sequences now
+legitimately produce MORE trades (every leg trades, since the reference
+always trails price), which is the intended behavior, not a regression.
+REST (`sessionDetail()`) and Socket.IO (`buildUpdatePayload()`) both now
+expose `state.activeReference`, verified `deepStrictEqual`-identical via
+a new cross-path integration test reproducing the exact reported
+scenario end-to-end. The frontend displays Initial Reference and Active
+Reference as two visually distinct labeled values (header text + two
+separate `ReferenceLine`s on `GridLevelsChart.jsx`, color-coded), and the
+create-form's disclosure text was corrected — it previously said "it
+[the reference] ... never changes afterward," which was accurate only
+for the Initial Reference and actively misleading about the engine's
+real crossing-eligibility behavior.
+
+4 new backend unit tests (engine) + 2 new backend unit tests (realtime,
+replacing/updating existing ones) + 1 new cross-path integration test +
+rewrites of 9 existing tests across `gridSimulatorEngine.test.js`,
+`gridSimulatorRealtime.test.js`, `gridBacktestEngine.test.js`,
+`gridBacktestService.test.js` — full backend suite passing (461 checks,
+exit 0). Frontend: 173/173 real tests passing, production build clean.
+No production/shared-database session was touched — all verification
+used synthetic fixtures and the real engine/service code, never the
+live/shared Atlas cluster.
+
+## ADR-032 — Realized P&L uses a FIFO lot queue, not weighted-average cost
+
+Status: ACCEPTED (explicit, deliberate accounting-method change requested
+by the project owner — supersedes the weighted-average convention
+documented in ADR-021/ADR-019 for REALIZED P&L specifically)
+
+Decision:
+
+`state.lots` is a new FIFO queue of `{qty, price}` entries. Every filled
+BUY pushes a new lot to the BACK of the queue, at its own effective unit
+cost (slippage + commission already applied, same as before). Every
+filled SELL consumes shares from the FRONT of the queue (oldest lots
+first) until the sold quantity is covered — possibly spanning multiple
+lots at different prices in one sell. Realized P&L for that sell is the
+sum, across however many lots it consumes, of `consumedQty *
+(unitProceeds - thatLot'sOwnPrice)` — never a single blended average.
+
+`state.avgCost` is kept, but redefined as a DERIVED DISPLAY value only:
+the weighted average across whatever lots currently remain
+(`weightedAvgCost(lots)`), recomputed after every buy/sell. It is never
+itself the source of a realized P&L calculation anymore. Unrealized P&L
+(`computePortfolioMetrics`) still legitimately uses it, since mark-to-
+market valuation of the remaining position is the same number either way
+the remaining lots are internally represented.
+
+Reason:
+
+Explicit instruction from the project owner, who described exactly FIFO
+semantics ("maintain a queue for every buy order, remove from the queue
+on sell, sum the differences") as what they expect — a real, industry-
+standard alternative to weighted-average cost (and the one most Indian
+tax/SEBI equity reporting conventions actually use), not a bug fix.
+
+Consequence:
+
+FIFO and weighted-average produce IDENTICAL results whenever only one
+cost basis exists at the time of a sell (a single lot, or a full-position
+liquidation) — which is why the large majority of this project's existing
+tests (single buy-then-sell cycles, full liquidations, starting-inventory
+scenarios) needed zero changes; only 2 tests that manually constructed a
+state with `avgCost` set directly (bypassing the engine's own lot
+tracking) needed an added `lots` fixture field to stay internally
+consistent. The two methods diverge only when a sell spans multiple
+lots bought at different prices — new tests prove this divergence
+directly (buy 100@35, buy 100@30; selling 100 first realizes P&L against
+the 35 lot specifically, NOT the 32.5 blended average).
+
+`annotateRunningState()` (the shared per-trade ledger-audit reconstructor
+used by both the live simulator and Grid Backtest) now also replays the
+lot queue forward per trade — it still trusts each trade's own
+`realizedPnLDelta` as final (never re-decides economics), but needs the
+lot queue to reconstruct a correct `avgCostAfter` for display. Grid
+Backtest required zero other changes — it inherits FIFO automatically via
+the same `createInitialGridState`/`processPriceUpdate` reuse as every
+other engine change in this project.
+
+New Mongoose schema field `GridSimulatorSession.state.lots` (array of
+`{qty, price}`, default `[]`). A session persisted before this field
+existed falls back to an empty lot queue on load — acceptable because the
+old weighted-average model never left a position with holdings > 0 and no
+cost basis, so this fallback path is never exercised by a real prior
+session's live/held inventory; it's purely a loading safety net.
+
+5 new unit tests (`weightedAvgCost`, `consumeLotsFifo` in isolation, a
+full worked multi-lot example, and a partial-consumption test proving the
+untouched lot keeps its own original price rather than being re-averaged)
++ 2 existing test fixtures updated to add an explicit `lots` field. Full
+backend suite: 466 checks, exit 0. Frontend unaffected (same `avgCost`/
+`realizedPnL` field names and shapes exposed via REST/Socket.IO — only
+the internal computation changed). No production/shared-database session
+was touched.

@@ -9,12 +9,13 @@ import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, Cartes
  * does NOT draw a fabricated continuous price line (same "never invent a
  * data point" discipline as src/pro/utils/candleMarkers.js, ADR-012).
  */
-export default function GridLevelsChart({ config, trades, currentPrice }) {
+export default function GridLevelsChart({ config, trades, currentPrice, activeReference }) {
   if (!config) return null;
 
   const filled = trades.filter((t) => t.qtyFilled > 0);
   const prices = [
     config.referencePrice,
+    ...(Number.isFinite(activeReference) ? [activeReference] : []),
     ...filled.map((t) => t.fillPrice),
     ...(Number.isFinite(currentPrice) ? [currentPrice] : []),
   ];
@@ -24,12 +25,18 @@ export default function GridLevelsChart({ config, trades, currentPrice }) {
   const lowBound = minPrice - padding;
   const highBound = maxPrice + padding;
 
+  // Lattice points never shift phase (ADR-031) — every point is still
+  // `config.referencePrice + n*gridInterval` for some integer n — but
+  // whether a given point is currently a BUY or SELL level depends on the
+  // CURRENT active reference, not the immutable initial one, since the
+  // grid trails the price after every crossing.
+  const currentAnchor = Number.isFinite(activeReference) ? activeReference : config.referencePrice;
   const gridLines = [];
   for (let n = Math.floor((lowBound - config.referencePrice) / config.gridInterval); n * config.gridInterval + config.referencePrice <= highBound; n += 1) {
-    if (n === 0) continue;
     const price = config.referencePrice + n * config.gridInterval;
+    if (price === currentAnchor) continue; // the active reference itself is never a tradeable level
     if (price >= lowBound && price <= highBound) {
-      gridLines.push({ n, price, type: n < 0 ? "BUY" : "SELL" });
+      gridLines.push({ n, price, type: price < currentAnchor ? "BUY" : "SELL" });
     }
   }
 
@@ -51,7 +58,10 @@ export default function GridLevelsChart({ config, trades, currentPrice }) {
           <Tooltip cursor={{ strokeDasharray: "3 3" }} formatter={(value, name) => [value, name]} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
 
-          <ReferenceLine y={config.referencePrice} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "Reference", fontSize: 10, position: "insideTopRight" }} />
+          <ReferenceLine y={config.referencePrice} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "Initial Reference", fontSize: 10, position: "insideTopRight" }} />
+          {Number.isFinite(activeReference) && activeReference !== config.referencePrice && (
+            <ReferenceLine y={activeReference} stroke="#d97706" strokeDasharray="4 4" label={{ value: "Active Reference", fontSize: 10, position: "insideTopLeft" }} />
+          )}
           {gridLines.map((line) => (
             <ReferenceLine
               key={line.n}

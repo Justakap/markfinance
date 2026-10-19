@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createGridSession } from "../api/professionalApi";
 import { showError, showSuccess } from "../../utils/toast";
+import { formatIndianInputValue, parseIndianInputValue } from "../../utils/indianFormat";
 import InstrumentSearchInput from "./InstrumentSearchInput";
 
 const DEFAULT_COMMISSION_PCT = 0.03;
@@ -80,14 +81,18 @@ export default function GridSimulatorCreateForm({ onCreated }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-gray-200 p-4">
       <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-        <strong>PAPER TRADING ONLY.</strong> This simulates a fixed-grid strategy against live/polled prices —
-        it never places a real broker order. Simulated fills use a two-knob commission/slippage model (see below);
-        it does not include STT, exchange transaction charges, GST, SEBI turnover fees, or stamp duty.
+        <strong>PAPER TRADING ONLY.</strong> This simulates a trailing-reference grid strategy against live/polled
+        prices — it never places a real broker order. Simulated fills use a two-knob commission/slippage model
+        (see below); it does not include STT, exchange transaction charges, GST, SEBI turnover fees, or stamp duty.
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        The grid's initial reference price is captured automatically from a fresh live market quote the moment
-        you create this session — it is not something you type in, and it never changes afterward.
+        The grid's <strong>Initial Reference</strong> price is captured automatically from a fresh live market quote
+        the moment you create this session — it is not something you type in, and that specific captured value never
+        changes afterward (shown on the session page for audit purposes). The <strong>Active Reference</strong> is a
+        separate, different value: it starts equal to the Initial Reference, but moves to the last grid level reached
+        after every crossing — filled, partially filled, or skipped — so the grid always trails the price. It is the
+        Active Reference, not the Initial Reference, that determines which price triggers the next BUY or SELL.
       </div>
 
       <div>
@@ -119,9 +124,10 @@ export default function GridSimulatorCreateForm({ onCreated }) {
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-500">Starting Virtual Capital (₹)</label>
           <input
-            type="number"
-            value={startingCapital}
-            onChange={(e) => setStartingCapital(e.target.value)}
+            type="text"
+            inputMode="numeric"
+            value={formatIndianInputValue(startingCapital)}
+            onChange={(e) => setStartingCapital(parseIndianInputValue(e.target.value))}
             className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
           />
         </div>

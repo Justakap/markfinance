@@ -41,6 +41,21 @@ export function getMarketSocket() {
   return socket;
 }
 
+/**
+ * Forces an immediate reconnect attempt on the EXISTING socket singleton
+ * (cycles the transport) rather than destroying and recreating it —
+ * destroying it (see disconnectMarketSocket()) would orphan every
+ * already-registered `.on()` listener elsewhere in the app. Socket.IO
+ * already auto-reconnects with backoff on its own; this is purely a
+ * manual "don't wait for backoff" escape hatch for a user-facing Refresh
+ * button when a feed looks stale.
+ */
+export function forceReconnectMarketSocket() {
+  const marketSocket = getMarketSocket();
+  marketSocket.disconnect();
+  marketSocket.connect();
+}
+
 export function disconnectMarketSocket() {
   if (socket) {
     clearUpdateBatch();

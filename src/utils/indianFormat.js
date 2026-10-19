@@ -50,3 +50,27 @@ export function formatPercent(value, digits = 2) {
   if (!isDisplayable(value)) return "--";
   return `${Number(value).toFixed(digits)}%`;
 }
+
+/**
+ * Live-typing helpers for a plain numeric `<input type="text">` that should
+ * show Indian comma grouping as the user types (e.g. "1000000" -> while
+ * typed, displayed as "10,00,000") without affecting the underlying numeric
+ * value used for calculations/submission.
+ *
+ * Usage: keep the raw numeric value in state; render the input's `value` via
+ * `formatIndianInputValue(rawValue)`; on change, call
+ * `parseIndianInputValue(e.target.value)` to recover the raw digits and
+ * store THAT back in state (never the formatted display string).
+ */
+export function formatIndianInputValue(rawValue) {
+  if (rawValue === "" || rawValue === null || rawValue === undefined) return "";
+  const digits = String(rawValue).replace(/[^\d]/g, "");
+  if (!digits) return "";
+  return INTEGER_FORMATTER.format(Number(digits));
+}
+
+/** Strips Indian grouping commas (or any non-digit) back to a plain digit
+ *  string, e.g. "10,00,000" -> "1000000". Returns "" for no digits. */
+export function parseIndianInputValue(displayValue) {
+  return String(displayValue ?? "").replace(/[^\d]/g, "");
+}

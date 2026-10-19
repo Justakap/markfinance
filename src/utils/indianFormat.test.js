@@ -1,4 +1,4 @@
-import { formatINR, formatIndianNumber, formatQuantity, formatPercent } from "./indianFormat";
+import { formatINR, formatIndianNumber, formatQuantity, formatPercent, formatIndianInputValue, parseIndianInputValue } from "./indianFormat";
 
 describe("indianFormat", () => {
   describe("formatINR", () => {
@@ -55,6 +55,40 @@ describe("indianFormat", () => {
 
     test("returns '--' for invalid input", () => {
       expect(formatQuantity(null)).toBe("--");
+    });
+  });
+
+  describe("formatIndianInputValue / parseIndianInputValue (live-typing helpers)", () => {
+    test("formats a raw number as a grouped string for display", () => {
+      expect(formatIndianInputValue(1000000)).toBe("10,00,000");
+      expect(formatIndianInputValue(100000)).toBe("1,00,000");
+    });
+
+    test("formats a partially-typed digit string as the user types", () => {
+      expect(formatIndianInputValue("1")).toBe("1");
+      expect(formatIndianInputValue("10")).toBe("10");
+      expect(formatIndianInputValue("100")).toBe("100");
+      expect(formatIndianInputValue("1000")).toBe("1,000");
+    });
+
+    test("returns an empty string for empty input", () => {
+      expect(formatIndianInputValue("")).toBe("");
+      expect(formatIndianInputValue(null)).toBe("");
+      expect(formatIndianInputValue(undefined)).toBe("");
+    });
+
+    test("parseIndianInputValue strips commas back to plain digits", () => {
+      expect(parseIndianInputValue("10,00,000")).toBe("1000000");
+      expect(parseIndianInputValue("1,000")).toBe("1000");
+    });
+
+    test("round-trips: format then parse recovers the original digits", () => {
+      const raw = "1500000";
+      expect(parseIndianInputValue(formatIndianInputValue(raw))).toBe(raw);
+    });
+
+    test("parseIndianInputValue strips non-digit characters entirely", () => {
+      expect(parseIndianInputValue("₹10,00,000.00")).toBe("100000000"); // decimal point stripped like any other non-digit
     });
   });
 
