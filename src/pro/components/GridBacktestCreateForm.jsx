@@ -3,8 +3,6 @@ import { createGridBacktest } from "../api/professionalApi";
 import { showError, showSuccess } from "../../utils/toast";
 import InstrumentSearchInput from "./InstrumentSearchInput";
 
-const DEFAULT_COMMISSION_PCT = 0.03;
-const DEFAULT_SLIPPAGE_PCT = 0.05;
 const TIMEFRAMES = [
   { value: "1m", label: "1 Minute" },
   { value: "5m", label: "5 Minutes" },
@@ -32,8 +30,6 @@ export default function GridBacktestCreateForm({ onCreated }) {
   const [quantityPerLevel, setQuantityPerLevel] = useState(100);
   const [startingCapital, setStartingCapital] = useState(100000);
   const [maxPositionSize, setMaxPositionSize] = useState("");
-  const [commissionPct, setCommissionPct] = useState(DEFAULT_COMMISSION_PCT);
-  const [slippagePct, setSlippagePct] = useState(DEFAULT_SLIPPAGE_PCT);
   const [startingHoldings, setStartingHoldings] = useState("");
   const [startingAvgCost, setStartingAvgCost] = useState("");
 
@@ -84,8 +80,6 @@ export default function GridBacktestCreateForm({ onCreated }) {
         quantityPerLevel: Number(quantityPerLevel),
         startingCapital: Number(startingCapital),
         maxPositionSize: maxPositionSize === "" ? null : Number(maxPositionSize),
-        commissionPct: Number(commissionPct),
-        slippagePct: Number(slippagePct),
         startingHoldings: hasStartingHoldings ? Number(startingHoldings) : 0,
         startingAvgCost: hasStartingHoldings ? Number(startingAvgCost) : 0,
       });
@@ -108,8 +102,8 @@ export default function GridBacktestCreateForm({ onCreated }) {
         <strong>PAPER TRADING / HISTORICAL SIMULATION ONLY.</strong> This replays the dynamic-reference grid
         strategy against historical candles — it never places a real broker order. The initial reference is the
         close of the first available historical candle in your selected range, not the current live price.
-        Simulated fills use the same two-knob commission/slippage model as the live simulator; it does not
-        include STT, exchange transaction charges, GST, SEBI turnover fees, or stamp duty.
+        Simulated fills execute at the exact candle price — zero friction, no synthetic commission or slippage
+        modeled, same as the live simulator.
       </div>
 
       <div>
@@ -218,26 +212,6 @@ export default function GridBacktestCreateForm({ onCreated }) {
             disabled={!hasStartingHoldings}
             className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
             placeholder={hasStartingHoldings ? "e.g. 315" : "N/A — no starting holdings"}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Commission %</label>
-          <input
-            type="number"
-            step="0.01"
-            value={commissionPct}
-            onChange={(e) => setCommissionPct(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Slippage %</label>
-          <input
-            type="number"
-            step="0.01"
-            value={slippagePct}
-            onChange={(e) => setSlippagePct(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
           />
         </div>
       </div>

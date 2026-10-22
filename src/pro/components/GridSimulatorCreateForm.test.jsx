@@ -22,10 +22,12 @@ describe("GridSimulatorCreateForm", () => {
     apiFetch.mockResolvedValue([]);
   });
 
-  test("discloses the incomplete cost model, with no PAPER TRADING ONLY warning banner", () => {
+  test("discloses zero-friction fills and a separate display-only charges estimate, with no PAPER TRADING ONLY warning banner", () => {
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
     expect(screen.queryByText(/PAPER TRADING ONLY/)).not.toBeInTheDocument();
-    expect(screen.getByText(/does not include STT, exchange transaction charges, GST, SEBI/)).toBeInTheDocument();
+    expect(screen.getByText(/zero friction, no synthetic commission or slippage/)).toBeInTheDocument();
+    expect(screen.queryByText(/Commission %/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Slippage %/)).not.toBeInTheDocument();
   });
 
   test("discloses that the reference price is auto-captured, with no manual reference-price input", () => {

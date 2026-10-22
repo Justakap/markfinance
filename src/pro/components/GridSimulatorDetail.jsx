@@ -7,6 +7,7 @@ import {
   resumeGridSession,
   stopGridSession,
   updateGridSessionConfig,
+  getGridSessionPreviewQuote,
 } from "../api/professionalApi";
 import { showError, showSuccess, confirmAction } from "../../utils/toast";
 import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, forceReconnectMarketSocket } from "../../utils/socket";
@@ -19,6 +20,13 @@ import GridLevelsChart from "./GridLevelsChart";
 // infrequent, not the primary mechanism.
 const RECONCILE_POLL_MS = 30000;
 const TRADE_PAGE_SIZE = 25;
+// How long the price flashes green/red on a move before settling back to
+// neutral — a blink, not a sticky color held until the next move.
+const PRICE_BLINK_MS = 900;
+// A CREATED (not-yet-started) session has no live tick feed of its own
+// (nothing pins its instrument until Start) — poll a lightweight read-only
+// quote preview instead, same provenance Start itself will use.
+const PREVIEW_QUOTE_POLL_MS = 5000;
 
 const FEED_BADGE = {
   LIVE: "bg-green-100 text-green-700",
@@ -102,6 +110,10 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const mountedRef = useRef(true);
   const skippedOnlyRef = useRef(skippedOnly);
   skippedOnlyRef.current = skippedOnly;
+  const prevPriceRef = useRef(null);
+  const [priceTone, setPriceTone] = useState("neutral");
+  const blinkTimerRef = useRef(null);
+  const [previewPrice, setPreviewPrice] = useState(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -206,6 +218,47 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
+
+  // Blinks the live price green/red on its own last move (not a fixed
+  // reference) — ticks upward flash green, downward flash red, then settle
+  // back to neutral after PRICE_BLINK_MS, rather than holding the color
+  // until the next move.
+  useEffect(() => {
+    const currentPrice = session?.lastFeedPrice ?? session?.state?.lastPrice ?? previewPrice;
+    if (!Number.isFinite(currentPrice)) return;
+    if (prevPriceRef.current != null && currentPrice !== prevPriceRef.current) {
+      setPriceTone(currentPrice > prevPriceRef.current ? "pos" : "neg");
+      clearTimeout(blinkTimerRef.current);
+      blinkTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setPriceTone("neutral");
+      }, PRICE_BLINK_MS);
+    }
+    prevPriceRef.current = currentPrice;
+  }, [session?.lastFeedPrice, session?.state?.lastPrice, previewPrice]);
+
+  useEffect(() => () => clearTimeout(blinkTimerRef.current), []);
+
+  // CREATED sessions have no live tick feed yet (nothing pins the
+  // instrument until Start) — poll a lightweight read-only quote preview
+  // instead, so the price is visibly live even before clicking Start.
+  useEffect(() => {
+    if (!session || session.status !== "CREATED") return;
+    let cancelled = false;
+    function poll() {
+      getGridSessionPreviewQuote(sessionId)
+        .then((res) => {
+          if (!cancelled && mountedRef.current) setPreviewPrice(res.price);
+        })
+        .catch(() => {});
+    }
+    poll();
+    const timer = setInterval(poll, PREVIEW_QUOTE_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, session?.status]);
 
   async function handleTransition(action, label) {
     setActionPending(true);
@@ -319,13 +372,19 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-4">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{session.symbol}</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {session.symbol}:{" "}
+            <span className={priceTone === "pos" ? "text-green-600" : priceTone === "neg" ? "text-red-600" : "text-gray-900"}>
+              {formatINR(lastFeedPrice ?? state?.lastPrice ?? previewPrice)}
+            </span>
+          </h2>
           <p className="text-xs text-gray-500">
-            Initial reference {formatINR(config.referencePrice)} (immutable, captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
+            Initial reference {formatINR(config.referencePrice)} (captured {config.referenceCapturedAt ? new Date(config.referenceCapturedAt).toLocaleString() : "--"}) ·
             Grid {formatINR(config.gridInterval)} · Qty/level {formatQuantity(config.quantityPerLevel)}
           </p>
           <p className="text-xs text-gray-500">
-            Active reference <span className="font-medium text-gray-700">{formatINR(state?.activeReference ?? config.referencePrice)}</span> — the anchor the next BUY/SELL levels are measured from; it trails the price after every crossing
+            Next buy <span className="font-medium text-green-700">{Number.isFinite(state?.nextBuyLevel) ? formatINR(state.nextBuyLevel) : "--"}</span> · Next sell{" "}
+            <span className="font-medium text-red-700">{Number.isFinite(state?.nextSellLevel) ? formatINR(state.nextSellLevel) : "--"}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -469,7 +528,6 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           subTone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"}
         />
         <Stat label="Realized P&L" value={formatINR(portfolio?.realizedPnL)} tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"} />
-        <Stat label="Last Price" value={formatINR(lastFeedPrice ?? state?.lastPrice)} />
         <Stat
           label="Trade Events"
           value={`Total Trade : ${formatQuantity(session?.tradeCounts ? session.tradeCounts.buyCount + session.tradeCounts.sellCount : tradesTotal)}`}
@@ -480,7 +538,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
 
       <div className="rounded-xl border border-gray-200 p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">Grid Levels &amp; Simulated Fills</h3>
-        <GridLevelsChart config={config} trades={trades} currentPrice={lastFeedPrice ?? state?.lastPrice} activeReference={state?.activeReference} />
+        <GridLevelsChart config={config} trades={trades} currentPrice={lastFeedPrice ?? state?.lastPrice} nextBuyLevel={state?.nextBuyLevel} nextSellLevel={state?.nextSellLevel} />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">

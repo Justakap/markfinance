@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 import GridSimulatorDetail from "./GridSimulatorDetail";
 import * as professionalApi from "../api/professionalApi";
 
@@ -40,6 +40,7 @@ describe("GridSimulatorDetail", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     professionalApi.listGridTrades.mockResolvedValue({ items: [], total: 0 });
+    professionalApi.getGridSessionPreviewQuote.mockResolvedValue({ price: 340, capturedAt: "2026-01-01T09:00:00.000Z" });
     onMarketTick.mockReturnValue(jest.fn());
     joinGridSession.mockReturnValue(jest.fn());
     onGridSimulatorUpdate.mockReturnValue(jest.fn());
@@ -67,7 +68,7 @@ describe("GridSimulatorDetail", () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
 
-    await waitFor(() => expect(screen.getByText("GICRE")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/GICRE/)).toBeInTheDocument());
     expect(screen.queryByText(/PAPER TRADING ONLY/)).not.toBeInTheDocument();
     expect(screen.getByText("Live (WebSocket)")).toBeInTheDocument();
     expect(screen.getByText("Connected")).toBeInTheDocument();
@@ -109,6 +110,22 @@ describe("GridSimulatorDetail", () => {
     unmount();
   });
 
+  test("header shows the symbol with a colon before the live price", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText(/GICRE:/)).toBeInTheDocument();
+    unmount();
+  });
+
+  test("a CREATED session (no state.lastPrice/lastFeedPrice yet) shows a live price from the preview-quote poll", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "CREATED", lastFeedPrice: null, state: {} }));
+    professionalApi.getGridSessionPreviewQuote.mockResolvedValue({ price: 351.25, capturedAt: "2026-01-01T09:00:00.000Z" });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => expect(screen.getByText("₹351.25")).toBeInTheDocument());
+    unmount();
+  });
+
   test("Stop requires confirmation before calling the API", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "ACTIVE" }));
     confirmAction.mockResolvedValue(false);
@@ -144,7 +161,7 @@ describe("GridSimulatorDetail", () => {
   test("clicking Refresh forces a socket reconnect and re-fetches the session over REST", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     const callsBefore = professionalApi.getGridSession.mock.calls.length;
 
     fireEvent.click(screen.getByText(/Refresh/));
@@ -163,7 +180,7 @@ describe("GridSimulatorDetail", () => {
     });
 
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     const callsBefore = professionalApi.getGridSession.mock.calls.length;
 
     pushUpdate({
@@ -182,6 +199,41 @@ describe("GridSimulatorDetail", () => {
     unmount();
   });
 
+  test("the live price blinks green/red on a move, then settles back to neutral (not a sticky color)", async () => {
+    jest.useFakeTimers();
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail()); // lastFeedPrice: 340
+    let pushUpdate;
+    onGridSimulatorUpdate.mockImplementation((callback) => {
+      pushUpdate = callback;
+      return jest.fn();
+    });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+
+    await act(async () => {
+      pushUpdate({
+        sessionId: "s1",
+        status: "ACTIVE",
+        lastFeedPrice: 345,
+        state: { lastPrice: 345, lastEventTimestamp: new Date().toISOString(), sequence: 2 },
+        portfolio: { cash: 60000, holdings: 200, avgCost: 340, realizedPnL: 0 },
+      });
+    });
+
+    const priceEl = screen.getByText("₹345.00");
+    expect(priceEl).toHaveClass("text-green-600");
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+    expect(priceEl).toHaveClass("text-gray-900");
+    expect(priceEl).not.toHaveClass("text-green-600");
+
+    unmount();
+    jest.useRealTimers();
+  });
+
   test("a duplicate/replayed gridSimulatorUpdate push (same trade sequence) never renders or counts the trade twice", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     let pushUpdate;
@@ -191,7 +243,7 @@ describe("GridSimulatorDetail", () => {
     });
 
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
 
     const update = {
       sessionId: "s1",
@@ -230,7 +282,7 @@ describe("GridSimulatorDetail", () => {
     });
 
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
 
     pushUpdate({ sessionId: "some-other-session", portfolio: { holdings: 999 } });
     expect(screen.queryByText("999")).not.toBeInTheDocument();
@@ -247,7 +299,7 @@ describe("GridSimulatorDetail", () => {
     });
 
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     const callsBefore = professionalApi.getGridSession.mock.calls.length;
 
     pushConnectionState("connected");
@@ -268,7 +320,7 @@ describe("GridSimulatorDetail", () => {
     });
 
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     unmount();
 
     expect(leaveSpy).toHaveBeenCalled();
@@ -279,16 +331,37 @@ describe("GridSimulatorDetail", () => {
   test("displays the immutable initial reference and its capture time (dynamic-reference strategy)", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail());
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     expect(screen.getByText(/Initial reference ₹340\.00/)).toBeInTheDocument();
     expect(screen.getByText(/captured/)).toBeInTheDocument();
+    unmount();
+  });
+
+  test("ADR-037: displays the nearest Next Buy/Next Sell pending levels instead of a single Active Reference", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      state: { lastPrice: 336, lastEventTimestamp: "2026-01-01T09:15:00.000Z", sequence: 1, nextBuyLevel: 334, nextSellLevel: 340 },
+    }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText(/Next buy/)).toBeInTheDocument();
+    expect(screen.getByText("₹334.00")).toBeInTheDocument();
+    expect(screen.getByText(/Next sell/)).toBeInTheDocument();
+    expect(screen.getAllByText("₹340.00").length).toBeGreaterThan(0); // also matches the Initial Reference, which happens to be the same value here
+    unmount();
+  });
+
+  test("ADR-037: shows '--' for Next Buy/Next Sell when not yet populated (e.g. a session predating this feature, before its next load)", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getAllByText("--").length).toBeGreaterThanOrEqual(2);
     unmount();
   });
 
   test("the config editor (ADR-034) is not shown while ACTIVE", async () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "ACTIVE" }));
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
     expect(screen.queryByText("Edit Configuration")).not.toBeInTheDocument();
     unmount();
   });
@@ -300,7 +373,7 @@ describe("GridSimulatorDetail", () => {
     }));
     professionalApi.updateGridSessionConfig.mockResolvedValue({ session: {} });
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
 
     fireEvent.click(screen.getByText("Edit"));
     expect(screen.getByDisplayValue("100")).toBeInTheDocument(); // quantityPerLevel pre-filled
@@ -330,7 +403,7 @@ describe("GridSimulatorDetail", () => {
     professionalApi.getGridSession.mockResolvedValue(sessionDetail({ status: "PAUSED" }));
     professionalApi.updateGridSessionConfig.mockRejectedValue({ data: { message: "Pause the session before editing its configuration" } });
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
 
     fireEvent.click(screen.getByText("Edit"));
     fireEvent.click(screen.getByText("Save"));
@@ -345,7 +418,7 @@ describe("GridSimulatorDetail", () => {
       charges: { brokerage: 20, stt: 5.5, exchangeTxnCharges: 1.2, sebiFee: 0.1, stampDuty: 0.6, gst: 3.8, total: 31.2, segmentClass: "FUTURES", approximate: true },
     }));
     const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
-    await waitFor(() => screen.getByText("GICRE"));
+    await waitFor(() => screen.getByText(/GICRE/));
 
     expect(screen.getByText("Total Charges")).toBeInTheDocument();
     expect(screen.getAllByText("₹31.20").length).toBeGreaterThan(0); // appears in both the card and the hover breakdown's total row

@@ -209,8 +209,6 @@ export function createGridSession({
   sellQuantityPerLevel,
   startingCapital,
   maxPositionSize,
-  commissionPct,
-  slippagePct,
   startingHoldings,
   startingAvgCost,
 }) {
@@ -226,8 +224,6 @@ export function createGridSession({
       sellQuantityPerLevel,
       startingCapital,
       maxPositionSize,
-      commissionPct,
-      slippagePct,
       startingHoldings,
       startingAvgCost,
     }),
@@ -245,6 +241,10 @@ export function getGridSession(sessionId) {
 
 export function startGridSession(sessionId) {
   return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/start`, { method: "POST" });
+}
+
+export function getGridSessionPreviewQuote(sessionId) {
+  return apiFetch(`/api/v2/grid-simulator/sessions/${sessionId}/preview-quote`);
 }
 
 export function pauseGridSession(sessionId) {
@@ -300,8 +300,6 @@ export function createGridBacktest({
   quantityPerLevel,
   startingCapital,
   maxPositionSize,
-  commissionPct,
-  slippagePct,
   startingHoldings,
   startingAvgCost,
 }) {
@@ -318,8 +316,6 @@ export function createGridBacktest({
       quantityPerLevel,
       startingCapital,
       maxPositionSize,
-      commissionPct,
-      slippagePct,
       startingHoldings,
       startingAvgCost,
     }),

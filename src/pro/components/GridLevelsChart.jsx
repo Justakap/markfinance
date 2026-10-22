@@ -2,20 +2,30 @@ import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, Cartes
 
 /**
  * Grid Trading Simulator (PAPER TRADING ONLY) — grid levels + simulated
- * fill markers. Deliberately plots only real data: the grid lines are
- * derived from the session's own config, and the markers are the actual
- * persisted trade ledger (fillPrice vs. sequence) — there is no continuous
- * tick-by-tick price history persisted for this session, so this chart
- * does NOT draw a fabricated continuous price line (same "never invent a
- * data point" discipline as src/pro/utils/candleMarkers.js, ADR-012).
+ * fill markers. Deliberately plots only real data: the reference lines are
+ * derived from the session's own config/state, and the markers are the
+ * actual persisted trade ledger (fillPrice vs. event time) — there is no
+ * continuous tick-by-tick price history persisted for this session, so
+ * this chart does NOT draw a fabricated continuous price line (same
+ * "never invent a data point" discipline as
+ * src/pro/utils/candleMarkers.js, ADR-012).
+ *
+ * ADR-037: the session no longer has a single fixed lattice or one "Active
+ * Reference" — every fill arms its own independent pending buy/sell level
+ * (see gridSimulatorEngine.js's file doc comment), so the full set can grow
+ * unbounded over a long session. Rather than plot every pending level (not
+ * legible, and not even exposed by the API), this chart shows only the two
+ * NEAREST ones — `nextBuyLevel`/`nextSellLevel` from the session's `state`
+ * — as the next prices that would actually trigger a trade.
  */
-export default function GridLevelsChart({ config, trades, currentPrice, activeReference }) {
+export default function GridLevelsChart({ config, trades, currentPrice, nextBuyLevel, nextSellLevel }) {
   if (!config) return null;
 
   const filled = trades.filter((t) => t.qtyFilled > 0);
   const prices = [
-    config.referencePrice,
-    ...(Number.isFinite(activeReference) ? [activeReference] : []),
+    ...(Number.isFinite(config.referencePrice) ? [config.referencePrice] : []),
+    ...(Number.isFinite(nextBuyLevel) ? [nextBuyLevel] : []),
+    ...(Number.isFinite(nextSellLevel) ? [nextSellLevel] : []),
     ...filled.map((t) => t.fillPrice),
     ...(Number.isFinite(currentPrice) ? [currentPrice] : []),
   ];
@@ -24,21 +34,6 @@ export default function GridLevelsChart({ config, trades, currentPrice, activeRe
   const padding = Math.max(config.gridInterval * 2, (maxPrice - minPrice) * 0.1 || config.gridInterval);
   const lowBound = minPrice - padding;
   const highBound = maxPrice + padding;
-
-  // Lattice points never shift phase (ADR-031) — every point is still
-  // `config.referencePrice + n*gridInterval` for some integer n — but
-  // whether a given point is currently a BUY or SELL level depends on the
-  // CURRENT active reference, not the immutable initial one, since the
-  // grid trails the price after every crossing.
-  const currentAnchor = Number.isFinite(activeReference) ? activeReference : config.referencePrice;
-  const gridLines = [];
-  for (let n = Math.floor((lowBound - config.referencePrice) / config.gridInterval); n * config.gridInterval + config.referencePrice <= highBound; n += 1) {
-    const price = config.referencePrice + n * config.gridInterval;
-    if (price === currentAnchor) continue; // the active reference itself is never a tradeable level
-    if (price >= lowBound && price <= highBound) {
-      gridLines.push({ n, price, type: price < currentAnchor ? "BUY" : "SELL" });
-    }
-  }
 
   // X-axis is the actual event time (not a sequence index) — each point's
   // own real eventTimestamp from the persisted trade, never interpolated.
@@ -73,18 +68,15 @@ export default function GridLevelsChart({ config, trades, currentPrice, activeRe
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />
 
-          <ReferenceLine y={config.referencePrice} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "Initial Reference", fontSize: 10, position: "insideTopRight" }} />
-          {Number.isFinite(activeReference) && activeReference !== config.referencePrice && (
-            <ReferenceLine y={activeReference} stroke="#d97706" strokeDasharray="4 4" label={{ value: "Active Reference", fontSize: 10, position: "insideTopLeft" }} />
+          {Number.isFinite(config.referencePrice) && (
+            <ReferenceLine y={config.referencePrice} stroke="#6366f1" strokeDasharray="4 4" label={{ value: "Initial Reference", fontSize: 10, position: "insideTopRight" }} />
           )}
-          {gridLines.map((line) => (
-            <ReferenceLine
-              key={line.n}
-              y={line.price}
-              stroke={line.type === "BUY" ? "#86efac" : "#fca5a5"}
-              strokeDasharray="2 2"
-            />
-          ))}
+          {Number.isFinite(nextBuyLevel) && (
+            <ReferenceLine y={nextBuyLevel} stroke="#16a34a" strokeDasharray="2 2" label={{ value: "Next Buy", fontSize: 10, position: "insideBottomLeft" }} />
+          )}
+          {Number.isFinite(nextSellLevel) && (
+            <ReferenceLine y={nextSellLevel} stroke="#dc2626" strokeDasharray="2 2" label={{ value: "Next Sell", fontSize: 10, position: "insideTopLeft" }} />
+          )}
           {Number.isFinite(currentPrice) && (
             <ReferenceLine y={currentPrice} stroke="#111827" label={{ value: "Current", fontSize: 10, position: "insideBottomRight" }} />
           )}

@@ -27,11 +27,13 @@ describe("GridBacktestCreateForm", () => {
     apiFetch.mockResolvedValue([]);
   });
 
-  test("discloses PAPER TRADING / HISTORICAL SIMULATION ONLY and the incomplete cost model", () => {
+  test("discloses PAPER TRADING / HISTORICAL SIMULATION ONLY and zero-friction fills", () => {
     render(<GridBacktestCreateForm onCreated={jest.fn()} />);
     expect(screen.getByText(/PAPER TRADING \/ HISTORICAL SIMULATION ONLY/)).toBeInTheDocument();
     expect(screen.getByText(/never places a real broker order/)).toBeInTheDocument();
-    expect(screen.getByText(/does not include STT, exchange transaction charges, GST, SEBI/)).toBeInTheDocument();
+    expect(screen.getByText(/zero friction, no synthetic commission or slippage/)).toBeInTheDocument();
+    expect(screen.queryByText(/Commission %/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Slippage %/)).not.toBeInTheDocument();
   });
 
   test("discloses that the initial reference is the first historical candle's close, not the live price", () => {

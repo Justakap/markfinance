@@ -39,4 +39,17 @@ describe("GridLevelsChart", () => {
     const { container } = render(<GridLevelsChart config={CONFIG} trades={trades} currentPrice={340} />);
     expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
   });
+
+  test("ADR-037: renders with nextBuyLevel/nextSellLevel instead of the old activeReference prop, without crashing", () => {
+    const { container } = render(
+      <GridLevelsChart config={CONFIG} trades={[]} currentPrice={340} nextBuyLevel={337} nextSellLevel={343} />,
+    );
+    expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
+  });
+
+  test("ADR-037: renders fine when nextBuyLevel/nextSellLevel are absent (e.g. not yet populated)", () => {
+    const trades = [{ type: "BUY", fillPrice: 337, qtyFilled: 100, eventTimestamp: "2026-01-01T09:15:00.000Z" }];
+    const { container } = render(<GridLevelsChart config={CONFIG} trades={trades} currentPrice={340} />);
+    expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
+  });
 });

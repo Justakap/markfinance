@@ -4,9 +4,6 @@ import { showError, showSuccess } from "../../utils/toast";
 import { formatIndianInputValue, parseIndianInputValue } from "../../utils/indianFormat";
 import InstrumentSearchInput from "./InstrumentSearchInput";
 
-const DEFAULT_COMMISSION_PCT = 0.03;
-const DEFAULT_SLIPPAGE_PCT = 0.05;
-
 /**
  * Grid Trading Simulator (PAPER TRADING ONLY) — session configuration
  * form, via POST /api/v2/grid-simulator/sessions. Router-free (callback
@@ -30,8 +27,6 @@ export default function GridSimulatorCreateForm({ onCreated }) {
   const [sellQuantityPerLevel, setSellQuantityPerLevel] = useState("");
   const [startingCapital, setStartingCapital] = useState(100000);
   const [maxPositionSize, setMaxPositionSize] = useState("");
-  const [commissionPct, setCommissionPct] = useState(DEFAULT_COMMISSION_PCT);
-  const [slippagePct, setSlippagePct] = useState(DEFAULT_SLIPPAGE_PCT);
   const [startingHoldings, setStartingHoldings] = useState("");
   const [startingAvgCost, setStartingAvgCost] = useState("");
 
@@ -76,8 +71,6 @@ export default function GridSimulatorCreateForm({ onCreated }) {
         sellQuantityPerLevel: useSeparateSellQuantity ? Number(sellQuantityPerLevel) : null,
         startingCapital: Number(startingCapital),
         maxPositionSize: maxPositionSize === "" ? null : Number(maxPositionSize),
-        commissionPct: Number(commissionPct),
-        slippagePct: Number(slippagePct),
         startingHoldings: hasStartingHoldings ? Number(startingHoldings) : 0,
         startingAvgCost: hasStartingHoldings ? Number(startingAvgCost) : 0,
       });
@@ -95,17 +88,19 @@ export default function GridSimulatorCreateForm({ onCreated }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-gray-200 p-4">
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        Simulated fills use a two-knob commission/slippage model (see below); it does not include STT, exchange
-        transaction charges, GST, SEBI turnover fees, or stamp duty.
+        Simulated fills execute at the exact observed price — zero friction, no synthetic commission or slippage
+        modeled. A separate, display-only <strong>Charges</strong> estimate (STT, exchange transaction charges, GST,
+        SEBI turnover fees, brokerage, stamp duty — the same costs a real broker like Zerodha would charge) is shown
+        on the session page, but it never adjusts the fill price or your cash/P&amp;L.
       </div>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-        The grid's <strong>Initial Reference</strong> price is captured automatically from a fresh live market quote
-        the moment you create this session — it is not something you type in, and that specific captured value never
-        changes afterward (shown on the session page for audit purposes). The <strong>Active Reference</strong> is a
-        separate, different value: it starts equal to the Initial Reference, but moves to the last grid level reached
-        after every crossing — filled, partially filled, or skipped — so the grid always trails the price. It is the
-        Active Reference, not the Initial Reference, that determines which price triggers the next BUY or SELL.
+        The grid's <strong>Initial Reference</strong> price isn't captured now — it's captured automatically from a
+        fresh live market quote the moment you click <strong>Start</strong> on the next screen, and that specific
+        captured value never changes afterward (shown on the session page for audit purposes). Clicking Start also
+        immediately executes one real BUY fill at that exact price, establishing your starting position right away.
+        From then on, every individual BUY/SELL arms its own next buy/sell target — shown on the session page as
+        Next Buy / Next Sell — rather than a single shared reference.
       </div>
 
       <div>
@@ -213,26 +208,6 @@ export default function GridSimulatorCreateForm({ onCreated }) {
             disabled={!hasStartingHoldings}
             className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm disabled:bg-gray-100 disabled:text-gray-400"
             placeholder={hasStartingHoldings ? "e.g. 315" : "N/A — no starting holdings"}
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Commission %</label>
-          <input
-            type="number"
-            step="0.01"
-            value={commissionPct}
-            onChange={(e) => setCommissionPct(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
-          />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-gray-500">Slippage %</label>
-          <input
-            type="number"
-            step="0.01"
-            value={slippagePct}
-            onChange={(e) => setSlippagePct(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
           />
         </div>
       </div>
