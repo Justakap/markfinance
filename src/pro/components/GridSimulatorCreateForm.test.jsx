@@ -128,6 +128,52 @@ describe("GridSimulatorCreateForm", () => {
     ));
   });
 
+  test("Upper Limit/Lower Limit inputs are hidden until 'Use price limits' is checked", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    expect(screen.queryByText("Upper Limit (₹)")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Use price limits"));
+    expect(screen.getByText("Upper Limit (₹)")).toBeInTheDocument();
+    expect(screen.getByText("Lower Limit (₹)")).toBeInTheDocument();
+  });
+
+  test("rejects submission when price limits are enabled without both bounds", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Use price limits"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. 400"), { target: { value: "400" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    expect(await screen.findByText(/Both an Upper Limit and a Lower Limit are required/)).toBeInTheDocument();
+    expect(professionalApi.createGridSession).not.toHaveBeenCalled();
+  });
+
+  test("rejects submission when Upper Limit is not greater than Lower Limit", async () => {
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Use price limits"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. 400"), { target: { value: "300" } });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 300"), { target: { value: "400" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+    expect(await screen.findByText(/Upper Limit must be greater than Lower Limit/)).toBeInTheDocument();
+    expect(professionalApi.createGridSession).not.toHaveBeenCalled();
+  });
+
+  test("submits usePriceLimits/lowerLimit/upperLimit when enabled, and null when not", async () => {
+    professionalApi.createGridSession.mockResolvedValue({ session: { sessionId: "s3" } });
+    render(<GridSimulatorCreateForm onCreated={jest.fn()} />);
+    await selectInstrument();
+    fireEvent.change(screen.getByPlaceholderText("e.g. 3"), { target: { value: "3" } });
+    fireEvent.click(screen.getByText("Use price limits"));
+    fireEvent.change(screen.getByPlaceholderText("e.g. 400"), { target: { value: "400" } });
+    fireEvent.change(screen.getByPlaceholderText("e.g. 300"), { target: { value: "300" } });
+    fireEvent.click(screen.getByText("Create Grid Session"));
+
+    await waitFor(() => expect(professionalApi.createGridSession).toHaveBeenCalledWith(
+      expect.objectContaining({ usePriceLimits: true, lowerLimit: 300, upperLimit: 400 }),
+    ));
+  });
+
   test("surfaces the backend's error message on failure (e.g. no fresh quote available)", async () => {
     professionalApi.createGridSession.mockRejectedValue({ data: { message: "No sufficiently fresh market quote is available for this instrument right now. Try again in a moment." } });
     render(<GridSimulatorCreateForm onCreated={jest.fn()} />);

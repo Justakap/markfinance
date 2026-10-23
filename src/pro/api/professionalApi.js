@@ -211,6 +211,9 @@ export function createGridSession({
   maxPositionSize,
   startingHoldings,
   startingAvgCost,
+  usePriceLimits,
+  lowerLimit,
+  upperLimit,
 }) {
   return apiFetch("/api/v2/grid-simulator/sessions", {
     method: "POST",
@@ -226,6 +229,9 @@ export function createGridSession({
       maxPositionSize,
       startingHoldings,
       startingAvgCost,
+      usePriceLimits,
+      lowerLimit,
+      upperLimit,
     }),
   });
 }

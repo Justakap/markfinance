@@ -29,6 +29,9 @@ export default function GridSimulatorCreateForm({ onCreated }) {
   const [maxPositionSize, setMaxPositionSize] = useState("");
   const [startingHoldings, setStartingHoldings] = useState("");
   const [startingAvgCost, setStartingAvgCost] = useState("");
+  const [usePriceLimits, setUsePriceLimits] = useState(false);
+  const [lowerLimit, setLowerLimit] = useState("");
+  const [upperLimit, setUpperLimit] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +62,16 @@ export default function GridSimulatorCreateForm({ onCreated }) {
       setError("Average purchase price is required when starting holdings are greater than zero");
       return;
     }
+    if (usePriceLimits) {
+      if (!(Number.isFinite(Number(lowerLimit)) && Number(lowerLimit) > 0) || !(Number.isFinite(Number(upperLimit)) && Number(upperLimit) > 0)) {
+        setError("Both an Upper Limit and a Lower Limit are required and must be positive numbers");
+        return;
+      }
+      if (Number(upperLimit) <= Number(lowerLimit)) {
+        setError("Upper Limit must be greater than Lower Limit");
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -73,6 +86,9 @@ export default function GridSimulatorCreateForm({ onCreated }) {
         maxPositionSize: maxPositionSize === "" ? null : Number(maxPositionSize),
         startingHoldings: hasStartingHoldings ? Number(startingHoldings) : 0,
         startingAvgCost: hasStartingHoldings ? Number(startingAvgCost) : 0,
+        usePriceLimits,
+        lowerLimit: usePriceLimits ? Number(lowerLimit) : null,
+        upperLimit: usePriceLimits ? Number(upperLimit) : null,
       });
       showSuccess("Grid simulator session created");
       onCreated(session.sessionId);
@@ -210,6 +226,43 @@ export default function GridSimulatorCreateForm({ onCreated }) {
             placeholder={hasStartingHoldings ? "e.g. 315" : "N/A — no starting holdings"}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="mb-1 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+          <input type="checkbox" checked={usePriceLimits} onChange={(e) => setUsePriceLimits(e.target.checked)} />
+          Use price limits
+        </label>
+        {usePriceLimits && (
+          <div className="mt-2 grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Upper Limit (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={upperLimit}
+                onChange={(e) => setUpperLimit(e.target.value)}
+                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                placeholder="e.g. 400"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-500">Lower Limit (₹)</label>
+              <input
+                type="number"
+                step="0.01"
+                value={lowerLimit}
+                onChange={(e) => setLowerLimit(e.target.value)}
+                className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm"
+                placeholder="e.g. 300"
+              />
+            </div>
+            <p className="col-span-2 text-xs text-gray-500">
+              BUYs pause once price falls to or below the Lower Limit, and SELLs pause once price rises to or above
+              the Upper Limit — both resume automatically if price moves back within the band.
+            </p>
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}

@@ -13,19 +13,25 @@ import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, ZAxis, Cartes
  * ADR-037: the session no longer has a single fixed lattice or one "Active
  * Reference" — every fill arms its own independent pending buy/sell level
  * (see gridSimulatorEngine.js's file doc comment), so the full set can grow
- * unbounded over a long session. Rather than plot every pending level (not
- * legible, and not even exposed by the API), this chart shows only the two
- * NEAREST ones — `nextBuyLevel`/`nextSellLevel` from the session's `state`
- * — as the next prices that would actually trigger a trade.
+ * over a long session. The two NEAREST levels — `nextBuyLevel`/
+ * `nextSellLevel` — get a labeled, solid reference line each (the prices
+ * that would actually trigger the very next trade); the rest of the full
+ * ladder (`pendingBuyLevels`/`pendingSellLevels`, optional) is drawn as
+ * faint, unlabeled lines so the ladder's actual depth/commitment is
+ * visible, not just the nearest rung.
  */
-export default function GridLevelsChart({ config, trades, currentPrice, nextBuyLevel, nextSellLevel }) {
+export default function GridLevelsChart({ config, trades, currentPrice, nextBuyLevel, nextSellLevel, pendingBuyLevels = [], pendingSellLevels = [] }) {
   if (!config) return null;
 
   const filled = trades.filter((t) => t.qtyFilled > 0);
+  const otherBuyLevels = pendingBuyLevels.filter((p) => p !== nextBuyLevel);
+  const otherSellLevels = pendingSellLevels.filter((p) => p !== nextSellLevel);
   const prices = [
     ...(Number.isFinite(config.referencePrice) ? [config.referencePrice] : []),
     ...(Number.isFinite(nextBuyLevel) ? [nextBuyLevel] : []),
     ...(Number.isFinite(nextSellLevel) ? [nextSellLevel] : []),
+    ...otherBuyLevels,
+    ...otherSellLevels,
     ...filled.map((t) => t.fillPrice),
     ...(Number.isFinite(currentPrice) ? [currentPrice] : []),
   ];
@@ -77,6 +83,12 @@ export default function GridLevelsChart({ config, trades, currentPrice, nextBuyL
           {Number.isFinite(nextSellLevel) && (
             <ReferenceLine y={nextSellLevel} stroke="#dc2626" strokeDasharray="2 2" label={{ value: "Next Sell", fontSize: 10, position: "insideTopLeft" }} />
           )}
+          {otherBuyLevels.map((level) => (
+            <ReferenceLine key={`buy-${level}`} y={level} stroke="#16a34a" strokeOpacity={0.25} strokeDasharray="1 3" />
+          ))}
+          {otherSellLevels.map((level) => (
+            <ReferenceLine key={`sell-${level}`} y={level} stroke="#dc2626" strokeOpacity={0.25} strokeDasharray="1 3" />
+          ))}
           {Number.isFinite(currentPrice) && (
             <ReferenceLine y={currentPrice} stroke="#111827" label={{ value: "Current", fontSize: 10, position: "insideBottomRight" }} />
           )}

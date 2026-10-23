@@ -52,4 +52,19 @@ describe("GridLevelsChart", () => {
     const { container } = render(<GridLevelsChart config={CONFIG} trades={trades} currentPrice={340} />);
     expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
   });
+
+  test("ADR-040 follow-up: renders the full ladder depth (pendingBuyLevels/pendingSellLevels beyond the nearest) without crashing", () => {
+    const { container } = render(
+      <GridLevelsChart
+        config={CONFIG}
+        trades={[]}
+        currentPrice={340}
+        nextBuyLevel={337}
+        nextSellLevel={343}
+        pendingBuyLevels={[337, 334, 331]}
+        pendingSellLevels={[343, 346]}
+      />,
+    );
+    expect(container.querySelector(".recharts-responsive-container")).toBeTruthy();
+  });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import {
   getGridSession,
   listGridTrades,
@@ -14,12 +14,21 @@ import { joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, force
 import { formatINR, formatQuantity } from "../../utils/indianFormat";
 import GridLevelsChart from "./GridLevelsChart";
 
+const TableExportMenu = lazy(() => import("../../components/TableExportMenu"));
+
 // Backstop reconciliation only — the real update path is Socket.IO
 // (onGridSimulatorUpdate). This exists purely to recover from an event
 // silently missed without a detectable disconnect; it is deliberately
 // infrequent, not the primary mechanism.
 const RECONCILE_POLL_MS = 30000;
-const TRADE_PAGE_SIZE = 25;
+// The main page only ever shows the most recent DISPLAY_TRADE_LIMIT trades
+// — the full history is always in the DB and reachable via the Orderbook
+// modal (fetchAllTrades), never lost or capped at the storage layer.
+const DISPLAY_TRADE_LIMIT = 20;
+// Largest page size the backend's pagination allows per request (see
+// routes/gridSimulatorRoutes.js's MAX_PAGE_SIZE) — the Orderbook modal
+// loops pages at this size to assemble the full ledger.
+const ORDERBOOK_PAGE_SIZE = 200;
 // How long the price flashes green/red on a move before settling back to
 // neutral — a blink, not a sticky color held until the next move.
 const PRICE_BLINK_MS = 900;
@@ -114,6 +123,11 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   const [priceTone, setPriceTone] = useState("neutral");
   const blinkTimerRef = useRef(null);
   const [previewPrice, setPreviewPrice] = useState(null);
+  const [showOrderbook, setShowOrderbook] = useState(false);
+  const [orderbookTrades, setOrderbookTrades] = useState([]);
+  const [orderbookLoading, setOrderbookLoading] = useState(false);
+  const [orderbookError, setOrderbookError] = useState("");
+  const [orderbookSkippedOnly, setOrderbookSkippedOnly] = useState(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -125,7 +139,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
   function load() {
     return Promise.all([
       getGridSession(sessionId),
-      listGridTrades(sessionId, { page: 1, limit: TRADE_PAGE_SIZE, skippedOnly }),
+      listGridTrades(sessionId, { page: 1, limit: DISPLAY_TRADE_LIMIT, skippedOnly }),
     ])
       .then(([sessionRes, tradesRes]) => {
         if (!mountedRef.current) return;
@@ -193,7 +207,7 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
             const newOnes = relevant.filter((t) => !known.has(tradeIdentity(t)));
             newCountRef.current = newOnes.length;
             if (!newOnes.length) return prev;
-            return [...newOnes].reverse().concat(prev).slice(0, TRADE_PAGE_SIZE);
+            return [...newOnes].reverse().concat(prev).slice(0, DISPLAY_TRADE_LIMIT);
           });
           setTradesTotal((prev) => prev + newCountRef.current);
         }
@@ -300,6 +314,38 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
     }
   }
 
+  // Orderbook modal: the main page only ever shows the most recent
+  // DISPLAY_TRADE_LIMIT trades, but every attempt (filled, partial, or
+  // fully skipped) is already persisted in full — this loops the backend's
+  // paginated listTrades() at its max page size until the whole ledger is
+  // assembled, so "view all trades" is never capped at what the main page
+  // happens to be showing.
+  async function fetchAllTrades(skippedOnlyFilter) {
+    setOrderbookLoading(true);
+    setOrderbookError("");
+    try {
+      let page = 1;
+      let all = [];
+      for (;;) {
+        const res = await listGridTrades(sessionId, { page, limit: ORDERBOOK_PAGE_SIZE, skippedOnly: skippedOnlyFilter });
+        all = all.concat(res.items || []);
+        if (all.length >= (res.total || 0) || !res.items?.length) break;
+        page += 1;
+      }
+      if (mountedRef.current) setOrderbookTrades(all);
+    } catch (err) {
+      if (mountedRef.current) setOrderbookError(err?.data?.message || "Failed to load the full order book");
+    } finally {
+      if (mountedRef.current) setOrderbookLoading(false);
+    }
+  }
+
+  function openOrderbook() {
+    setShowOrderbook(true);
+    setOrderbookSkippedOnly(skippedOnly);
+    fetchAllTrades(skippedOnly);
+  }
+
   // Live-editable config (ADR-034) — only reachable while PAUSED, both here
   // and server-side, so a crossing can never be processed concurrently
   // with a half-applied edit.
@@ -383,9 +429,16 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
             Grid {formatINR(config.gridInterval)} · Qty/level {formatQuantity(config.quantityPerLevel)}
           </p>
           <p className="text-xs text-gray-500">
-            Next buy <span className="font-medium text-green-700">{Number.isFinite(state?.nextBuyLevel) ? formatINR(state.nextBuyLevel) : "--"}</span> · Next sell{" "}
+            Next buy <span className="font-medium text-green-700">{Number.isFinite(state?.nextBuyLevel) ? formatINR(state.nextBuyLevel) : "--"}</span>
+            {state?.pendingBuyLevels?.length > 1 && <span className="text-gray-400"> (+{state.pendingBuyLevels.length - 1} more armed)</span>} · Next sell{" "}
             <span className="font-medium text-red-700">{Number.isFinite(state?.nextSellLevel) ? formatINR(state.nextSellLevel) : "--"}</span>
+            {state?.pendingSellLevels?.length > 1 && <span className="text-gray-400"> (+{state.pendingSellLevels.length - 1} more armed)</span>}
           </p>
+          {(config.lowerLimit != null || config.upperLimit != null) && (
+            <p className="text-xs text-gray-500">
+              Price limits: <span className="font-medium text-gray-700">{formatINR(config.lowerLimit)} – {formatINR(config.upperLimit)}</span> — buys pause at/below the lower limit, sells pause at/above the upper limit
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CONNECTION_BADGE[connectionState] || CONNECTION_BADGE.disconnected}`}>
@@ -527,7 +580,17 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
           sub={portfolio?.unrealizedPnL != null ? `${portfolio.unrealizedPnL >= 0 ? "+" : ""}${formatINR(portfolio.unrealizedPnL)} vs. purchase price` : undefined}
           subTone={portfolio?.unrealizedPnL >= 0 ? "pos" : "neg"}
         />
-        <Stat label="Realized P&L" value={formatINR(portfolio?.realizedPnL)} tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"} />
+        <Stat
+          label="Realized P&L"
+          value={formatINR(portfolio?.realizedPnL)}
+          tone={portfolio?.realizedPnL >= 0 ? "pos" : "neg"}
+          sub={
+            portfolio?.realizedPnL != null && charges?.total != null
+              ? `Net after charges: ${formatINR(portfolio.realizedPnL - charges.total)}`
+              : undefined
+          }
+          subTone={portfolio?.realizedPnL != null && charges?.total != null && portfolio.realizedPnL - charges.total >= 0 ? "pos" : "neg"}
+        />
         <Stat
           label="Trade Events"
           value={`Total Trade : ${formatQuantity(session?.tradeCounts ? session.tradeCounts.buyCount + session.tradeCounts.sellCount : tradesTotal)}`}
@@ -538,52 +601,160 @@ export default function GridSimulatorDetail({ sessionId, onBack }) {
 
       <div className="rounded-xl border border-gray-200 p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-700">Grid Levels &amp; Simulated Fills</h3>
-        <GridLevelsChart config={config} trades={trades} currentPrice={lastFeedPrice ?? state?.lastPrice} nextBuyLevel={state?.nextBuyLevel} nextSellLevel={state?.nextSellLevel} />
+        <GridLevelsChart
+          config={config}
+          trades={trades}
+          currentPrice={lastFeedPrice ?? state?.lastPrice}
+          nextBuyLevel={state?.nextBuyLevel}
+          nextSellLevel={state?.nextSellLevel}
+          pendingBuyLevels={state?.pendingBuyLevels}
+          pendingSellLevels={state?.pendingSellLevels}
+        />
       </div>
 
       <div className="rounded-xl border border-gray-200 p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700">Trade Ledger</h3>
-          <label className="flex items-center gap-1 text-xs text-gray-500">
-            <input type="checkbox" checked={skippedOnly} onChange={(e) => setSkippedOnly(e.target.checked)} />
-            Skipped/partial only
-          </label>
+          <h3 className="text-sm font-semibold text-gray-700">
+            Trade Ledger <span className="font-normal text-gray-400">(last {DISPLAY_TRADE_LIMIT})</span>
+          </h3>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1 text-xs text-gray-500">
+              <input type="checkbox" checked={skippedOnly} onChange={(e) => setSkippedOnly(e.target.checked)} />
+              Skipped/partial only
+            </label>
+            <button
+              type="button"
+              onClick={openOrderbook}
+              className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Orderbook
+            </button>
+          </div>
         </div>
         {trades.length === 0 ? (
           <p className="text-sm text-gray-400">No {skippedOnly ? "skipped/partial" : "simulated"} fills yet.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="p-2 text-left font-medium text-gray-500">Type</th>
-                  <th className="p-2 text-left font-medium text-gray-500">Level</th>
-                  <th className="p-2 text-left font-medium text-gray-500">Fill Price</th>
-                  <th className="p-2 text-left font-medium text-gray-500">Qty Filled</th>
-                  <th className="p-2 text-left font-medium text-gray-500">Qty Skipped</th>
-                  <th className="p-2 text-left font-medium text-gray-500">Reason</th>
-                  <th className="p-2 text-left font-medium text-gray-500">When</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.map((trade) => (
-                  <tr key={trade.tradeId || `seq-${trade.sequence}`} className="border-t border-gray-100">
-                    <td className={`p-2 font-medium ${trade.type === "BUY" ? "text-green-700" : "text-red-700"}`}>{trade.type}</td>
-                    <td className="p-2">
-                      {formatINR(trade.levelPrice)}
-                      {trade.gapFill && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">GAP</span>}
-                    </td>
-                    <td className="p-2">{formatINR(trade.fillPrice)}</td>
-                    <td className="p-2">{formatQuantity(trade.qtyFilled)}</td>
-                    <td className="p-2">{trade.qtySkipped > 0 ? formatQuantity(trade.qtySkipped) : "--"}</td>
-                    <td className="p-2 text-xs text-gray-500">{trade.reason || "--"}</td>
-                    <td className="p-2 text-xs text-gray-400">{new Date(trade.eventTimestamp).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TradeLedgerTable trades={trades} />
         )}
+      </div>
+
+      {showOrderbook && (
+        <OrderbookModal
+          trades={orderbookTrades}
+          loading={orderbookLoading}
+          error={orderbookError}
+          skippedOnly={orderbookSkippedOnly}
+          onToggleSkippedOnly={(checked) => {
+            setOrderbookSkippedOnly(checked);
+            fetchAllTrades(checked);
+          }}
+          onClose={() => setShowOrderbook(false)}
+          symbol={session.symbol}
+        />
+      )}
+    </div>
+  );
+}
+
+function TradeLedgerTable({ trades }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="p-2 text-left font-medium text-gray-500">Type</th>
+            <th className="p-2 text-left font-medium text-gray-500">Level</th>
+            <th className="p-2 text-left font-medium text-gray-500">Fill Price</th>
+            <th className="p-2 text-left font-medium text-gray-500">Qty Filled</th>
+            <th className="p-2 text-left font-medium text-gray-500">Qty Skipped</th>
+            <th className="p-2 text-left font-medium text-gray-500">Reason</th>
+            <th className="p-2 text-left font-medium text-gray-500">When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((trade) => (
+            <tr key={trade.tradeId || `seq-${trade.sequence}`} className="border-t border-gray-100">
+              <td className={`p-2 font-medium ${trade.type === "BUY" ? "text-green-700" : "text-red-700"}`}>{trade.type}</td>
+              <td className="p-2">
+                {formatINR(trade.levelPrice)}
+                {trade.gapFill && <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] text-amber-700">GAP</span>}
+              </td>
+              <td className="p-2">{formatINR(trade.fillPrice)}</td>
+              <td className="p-2">{formatQuantity(trade.qtyFilled)}</td>
+              <td className="p-2">{trade.qtySkipped > 0 ? formatQuantity(trade.qtySkipped) : "--"}</td>
+              <td className="p-2 text-xs text-gray-500">{trade.reason || "--"}</td>
+              <td className="p-2 text-xs text-gray-400">{new Date(trade.eventTimestamp).toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const ORDERBOOK_EXPORT_COLUMNS = [
+  { label: "Sequence", value: "sequence" },
+  { label: "Type", value: "type" },
+  { label: "Level Price", value: (t) => t.levelPrice },
+  { label: "Fill Price", value: (t) => t.fillPrice },
+  { label: "Qty Requested", value: (t) => t.qtyRequested },
+  { label: "Qty Filled", value: (t) => t.qtyFilled },
+  { label: "Qty Skipped", value: (t) => t.qtySkipped },
+  { label: "Reason", value: (t) => t.reason || "" },
+  { label: "Cash After", value: (t) => t.cashAfter },
+  { label: "Holdings After", value: (t) => t.holdingsAfter },
+  { label: "Avg Cost After", value: (t) => t.avgCostAfter },
+  { label: "Realized P&L Delta", value: (t) => t.realizedPnLDelta },
+  { label: "Gap Fill", value: (t) => (t.gapFill ? "Yes" : "No") },
+  { label: "When", value: (t) => new Date(t.eventTimestamp).toLocaleString() },
+];
+
+// Full order book — every trade attempt ever persisted for this session
+// (filled, partial, or fully skipped), not just the last DISPLAY_TRADE_LIMIT
+// shown on the main page. Fetched on open via fetchAllTrades(), which loops
+// the backend's paginated listTrades() until the whole ledger is assembled.
+function OrderbookModal({ trades, loading, error, skippedOnly, onToggleSkippedOnly, onClose, symbol }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-gray-200 p-4">
+          <h3 className="text-sm font-semibold text-gray-700">Order Book — {symbol}</h3>
+          <button type="button" onClick={onClose} className="rounded-full px-2 py-1 text-sm text-gray-500 hover:bg-gray-100">
+            ✕
+          </button>
+        </div>
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+          <label className="flex items-center gap-1 text-xs text-gray-500">
+            <input type="checkbox" checked={skippedOnly} onChange={(e) => onToggleSkippedOnly(e.target.checked)} />
+            Skipped/partial only
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">{trades.length} trade{trades.length === 1 ? "" : "s"}</span>
+            <Suspense fallback={<span className="text-xs text-gray-400">Export…</span>}>
+              <TableExportMenu
+                compact
+                rows={trades}
+                columns={ORDERBOOK_EXPORT_COLUMNS}
+                filePrefix={`GridOrderbook_${symbol}`}
+                disabled={loading || trades.length === 0}
+              />
+            </Suspense>
+          </div>
+        </div>
+        <div className="overflow-y-auto p-4">
+          {loading ? (
+            <p className="text-sm text-gray-400">Loading full order book…</p>
+          ) : error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : trades.length === 0 ? (
+            <p className="text-sm text-gray-400">No {skippedOnly ? "skipped/partial" : "simulated"} fills yet.</p>
+          ) : (
+            <TradeLedgerTable trades={trades} />
+          )}
+        </div>
       </div>
     </div>
   );

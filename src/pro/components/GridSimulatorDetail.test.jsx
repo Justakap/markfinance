@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act, within } from "@testing-library/react";
 import GridSimulatorDetail from "./GridSimulatorDetail";
 import * as professionalApi from "../api/professionalApi";
 
@@ -16,6 +16,10 @@ jest.mock("../../utils/socket", () => ({
   onSocketConnectionChange: jest.fn(),
   forceReconnectMarketSocket: jest.fn(),
 }));
+// The real TableExportMenu pulls in xlsx/jspdf, which need browser APIs
+// (TextEncoder et al.) this jsdom test environment doesn't provide — stub
+// it so the Orderbook modal can be tested without a real export library.
+jest.mock("../../components/TableExportMenu", () => ({ rows }) => <div>Export ({rows.length})</div>);
 
 const { confirmAction } = require("../../utils/toast");
 const { onMarketTick, joinGridSession, onGridSimulatorUpdate, onSocketConnectionChange, forceReconnectMarketSocket } = require("../../utils/socket");
@@ -429,6 +433,113 @@ describe("GridSimulatorDetail", () => {
     expect(screen.getByText("SEBI Charges")).toBeInTheDocument();
     expect(screen.getByText("Stamp Duty")).toBeInTheDocument();
     expect(screen.getByText("GST")).toBeInTheDocument();
+    unmount();
+  });
+
+  test("Realized P&L shows a Net after charges sub-line", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      portfolio: { cash: 66400, holdings: 100, avgCost: 336, realizedPnL: 98, unrealizedPnL: 0, equity: 66400 },
+      charges: { brokerage: 20, stt: 5.5, exchangeTxnCharges: 1.2, sebiFee: 0.1, stampDuty: 0.6, gst: 3.8, total: 31.2, segmentClass: "FUTURES", approximate: false },
+    }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText("Net after charges: ₹66.80")).toBeInTheDocument(); // 98 - 31.20
+    unmount();
+  });
+
+  test("ADR-040 follow-up: shows how many more buy/sell levels are armed beyond the nearest one", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      state: {
+        lastPrice: 336,
+        lastEventTimestamp: "2026-01-01T09:15:00.000Z",
+        sequence: 1,
+        nextBuyLevel: 334,
+        nextSellLevel: 340,
+        pendingBuyLevels: [334, 331, 328],
+        pendingSellLevels: [340],
+      },
+    }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText(/\(\+2 more armed\)/)).toBeInTheDocument(); // 3 buy levels -> 2 besides the nearest
+    expect(screen.queryByText(/Next sell.*\(\+/)).not.toBeInTheDocument(); // only 1 sell level -> no "more" suffix
+    unmount();
+  });
+
+  test("shows the configured price limits when set (ADR-040)", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail({
+      config: { referencePrice: 340, referenceCapturedAt: "2026-01-01T09:00:00.000Z", gridInterval: 3, quantityPerLevel: 100, lowerLimit: 300, upperLimit: 400 },
+    }));
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText(/Price limits:/)).toBeInTheDocument();
+    expect(screen.getByText(/₹300\.00.*₹400\.00/)).toBeInTheDocument();
+    unmount();
+  });
+
+  test("Trade Ledger header discloses it only shows the most recent DISPLAY_TRADE_LIMIT trades", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    professionalApi.listGridTrades.mockResolvedValue({ items: [{ type: "BUY", fillPrice: 336, qtyFilled: 100, qtySkipped: 0, sequence: 1, eventTimestamp: "2026-01-01T09:15:00.000Z" }], total: 1 });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+    expect(screen.getByText(/\(last 20\)/)).toBeInTheDocument();
+    unmount();
+  });
+
+  test("clicking Orderbook opens a modal that fetches and shows the FULL trade history, looping pages beyond the main page's limit", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    professionalApi.listGridTrades.mockResolvedValueOnce({ items: [{ type: "BUY", fillPrice: 336, qtyFilled: 100, qtySkipped: 0, sequence: 1, eventTimestamp: "2026-01-01T09:15:00.000Z" }], total: 1 });
+
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+
+    // The orderbook fetch should loop pages until it has everything, even
+    // though the main page only ever asked for DISPLAY_TRADE_LIMIT (20).
+    const page1 = Array.from({ length: 200 }, (_, i) => ({ type: "BUY", fillPrice: 100 + i, qtyFilled: 10, qtySkipped: 0, sequence: i + 1, eventTimestamp: "2026-01-01T09:15:00.000Z" }));
+    const page2 = [{ type: "SELL", fillPrice: 150, qtyFilled: 10, qtySkipped: 0, sequence: 201, eventTimestamp: "2026-01-01T09:20:00.000Z" }];
+    professionalApi.listGridTrades
+      .mockResolvedValueOnce({ items: page1, total: 201 })
+      .mockResolvedValueOnce({ items: page2, total: 201 });
+
+    fireEvent.click(screen.getByText("Orderbook"));
+    await waitFor(() => expect(screen.getByText("201 trades")).toBeInTheDocument());
+
+    expect(professionalApi.listGridTrades).toHaveBeenLastCalledWith("s1", expect.objectContaining({ page: 2, limit: 200 }));
+    unmount();
+  });
+
+  test("Orderbook modal's skipped-only toggle refetches with the filter applied", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    professionalApi.listGridTrades.mockResolvedValueOnce({ items: [], total: 0 });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+
+    professionalApi.listGridTrades.mockResolvedValueOnce({ items: [], total: 0 });
+    fireEvent.click(screen.getByText("Orderbook"));
+    await waitFor(() => screen.getByText("Order Book — GICRE"));
+
+    professionalApi.listGridTrades.mockResolvedValueOnce({
+      items: [{ type: "SELL", fillPrice: 340, qtyFilled: 0, qtySkipped: 100, reason: "insufficient_holdings", sequence: 5, eventTimestamp: "2026-01-01T09:30:00.000Z" }],
+      total: 1,
+    });
+    const modalHeading = screen.getByText("Order Book — GICRE");
+    const modalRoot = modalHeading.closest("div").parentElement;
+    fireEvent.click(within(modalRoot).getByRole("checkbox"));
+
+    await waitFor(() => expect(professionalApi.listGridTrades).toHaveBeenLastCalledWith("s1", expect.objectContaining({ skippedOnly: true })));
+    unmount();
+  });
+
+  test("closing the Orderbook modal hides it", async () => {
+    professionalApi.getGridSession.mockResolvedValue(sessionDetail());
+    professionalApi.listGridTrades.mockResolvedValue({ items: [], total: 0 });
+    const { unmount } = render(<GridSimulatorDetail sessionId="s1" onBack={jest.fn()} />);
+    await waitFor(() => screen.getByText(/GICRE/));
+
+    fireEvent.click(screen.getByText("Orderbook"));
+    await waitFor(() => screen.getByText("Order Book — GICRE"));
+    fireEvent.click(screen.getByText("✕"));
+    expect(screen.queryByText("Order Book — GICRE")).not.toBeInTheDocument();
     unmount();
   });
 });
