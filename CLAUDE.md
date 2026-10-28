@@ -75,9 +75,15 @@ this one. Do not assume changes here are reflected there or vice versa.
 ## Production
 
 - Frontend: https://markfinance.netlify.app
-- Backend: https://markfinancebackend1.onrender.com (Render free tier — expect
+- Backend: https://markfinancebackend.onrender.com (Render free tier — expect
   a ~20-30s cold start after idle on the first request; this is a platform
-  characteristic, not a frontend bug)
+  characteristic, not a frontend bug). There are two Render deployments of
+  the backend (`markfinancebackend` and `markfinancebackend1`) that the
+  owner switches between manually, since a Render free-tier service
+  suspends after sustained inactivity — whichever one isn't currently
+  suspended is authoritative. As of 2026-10-28 that's the `1`-less one; see
+  Change History below. Don't assume either URL is permanently correct —
+  check with the owner (or just try the `/api/health` endpoint) if unsure.
 
 ## Repository URLs
 
@@ -141,8 +147,9 @@ session.**
    all).
 2. Never hardcode the backend URL — always go through `API_URL`
    (`src/config/api.js`), which reads `REACT_APP_API_URL`. Production
-   (Netlify) sets this to `https://markfinancebackend1.onrender.com` via
-   `netlify.toml`; local dev uses `.env.local` (see `.env.example`).
+   (Netlify) sets this via `netlify.toml` — see Production above for which
+   of the two Render deployments is currently active; local dev uses
+   `.env.local` (see `.env.example`).
    Hardcoded `localhost:5001` strings were previously used in a couple of
    user-facing error messages — removed; don't reintroduce them.
 3. Never hardcode Firebase credentials as a fallback in source —
@@ -181,8 +188,8 @@ list of endpoints/shapes. Key things to remember on this side:
 
 Names only — see `.env.example` for the full list, never commit real values:
 
-- `REACT_APP_API_URL` — backend base URL (production:
-  `https://markfinancebackend1.onrender.com`, local dev:
+- `REACT_APP_API_URL` — backend base URL (production: whichever of the two
+  Render deployments is currently active, see Production above; local dev:
   `http://localhost:5001`)
 - `REACT_APP_FIREBASE_API_KEY`
 - `REACT_APP_FIREBASE_AUTH_DOMAIN`
@@ -314,9 +321,26 @@ missing.
 backend is `https://markfinancebackend1.onrender.com`. Both were found to
 serve identical code/data at the time of this fix, so it wasn't
 user-visible, but corrected so the deployed frontend points at the right
-service going forward. If you ever see `markfinancebackend.onrender.com`
-referenced anywhere (old notes, bookmarks), treat the `1` URL as
-authoritative unless told otherwise.
+service going forward.
+
+**Superseded by the 2026-10-28 entry below** — the owner runs two Render
+free-tier deployments and switches between them as each one suspends from
+inactivity, so neither URL is permanently "the right one" anymore. Check
+Production above (or just ask) for which one is currently active before
+touching this.
+
+### 2026-10-28 — Switched production backend URL back to the non-`1` deployment
+
+The owner maintains two separate Render free-tier deployments of the
+backend (`markfinancebackend` and `markfinancebackend1`) specifically
+*because* a Render free-tier service suspends after sustained inactivity —
+when one is suspended, traffic is pointed at the other rather than eating
+the ~20-30s cold-start on every first request. `markfinancebackend1` was
+suspended, so `netlify.toml`'s `REACT_APP_API_URL` was switched to
+`https://markfinancebackend.onrender.com`. This is expected to flip back
+and forth over time — don't treat either URL as permanently authoritative,
+and don't "fix" a future switch back to the `1` URL as if it were the
+2026-10-05 mistake being reintroduced.
 
 ### 2026-10-05 (later) — Fixed null-coerced-to-zero display bugs
 
