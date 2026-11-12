@@ -75,14 +75,15 @@ this one. Do not assume changes here are reflected there or vice versa.
 ## Production
 
 - Frontend: https://markfinance.netlify.app
-- Backend: https://markfinancebackend.onrender.com (Render free tier — expect
-  a ~20-30s cold start after idle on the first request; this is a platform
-  characteristic, not a frontend bug). There are two Render deployments of
-  the backend (`markfinancebackend` and `markfinancebackend1`) that the
-  owner switches between manually, since a Render free-tier service
-  suspends after sustained inactivity — whichever one isn't currently
-  suspended is authoritative. As of 2026-10-28 that's the `1`-less one; see
-  Change History below. Don't assume either URL is permanently correct —
+- Backend: https://markfinancebackend1.onrender.com (Render free tier —
+  expect a ~20-30s cold start after idle on the first request; this is a
+  platform characteristic, not a frontend bug). There are two Render
+  deployments of the backend (`markfinancebackend` and
+  `markfinancebackend1`) that the owner switches between manually, since a
+  Render free-tier service suspends after sustained inactivity — whichever
+  one isn't currently suspended is authoritative. As of 2026-11-12 that's
+  the `1` one (flipped back from the `1`-less one as of 2026-10-28 — see
+  Change History below). Don't assume either URL is permanently correct —
   check with the owner (or just try the `/api/health` endpoint) if unsure.
 
 ## Repository URLs
@@ -341,6 +342,17 @@ suspended, so `netlify.toml`'s `REACT_APP_API_URL` was switched to
 and forth over time — don't treat either URL as permanently authoritative,
 and don't "fix" a future switch back to the `1` URL as if it were the
 2026-10-05 mistake being reintroduced.
+
+### 2026-11-12 — Flipped production backend URL back to the `1` deployment
+
+As predicted in the entry above, the two Render free-tier deployments
+flipped again: `markfinancebackend` (no `1`) was now the suspended one
+(confirmed 503 on `/api/health`), while `markfinancebackend1` answered 200
+once it finished its own cold-start wake-up. Switched `netlify.toml`'s
+`REACT_APP_API_URL` back to `https://markfinancebackend1.onrender.com`.
+Same note as last time: this isn't a one-off fix, it's expected to keep
+alternating — always verify with `/api/health` on both before switching,
+don't assume either one is "the real" URL.
 
 ### 2026-10-05 (later) — Fixed null-coerced-to-zero display bugs
 
